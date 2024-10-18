@@ -1,0 +1,113 @@
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <div *ngIf="loading" class="ion-text-center ion-padding">
+    <ion-spinner></ion-spinner>
+    <p>Loading user information...</p>
+  </div>
+
+  <div *ngIf="!loading">
+    <div *ngIf="error" class="ion-text-center ion-padding">
+      <ion-text color="danger">
+        <p>{{ error }}</p>
+      </ion-text>
+    </div>
+
+    <ion-card *ngIf="currentUser">
+      <ion-card-header>
+        <ion-card-title>Profile Information</ion-card-title>
+      </ion-card-header>
+      
+      <ion-card-content>
+        <ion-list>
+          <ion-item>
+            <ion-label>
+              <h2>Name</h2>
+              <p>{{currentUser.first_name}} {{currentUser.last_name}}</p>
+            </ion-label>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>
+              <h2>Username</h2>
+              <p>{{currentUser.username}}</p>
+            </ion-label>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>
+              <h2>Email</h2>
+              <p>{{currentUser.email}}</p>
+            </ion-label>
+          </ion-item>
+
+          <ion-item>
+            <ion-label>
+              <h2>Role</h2>
+              <p>{{currentUser.role}}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
+        <button class="full-button" (click)="logout()">
+          Logout
+        </button>
+      </ion-card-content>
+    </ion-card>
+
+    <!-- Orders Section -->
+    <ion-card *ngIf="allOrders.length > 0">
+      <ion-card-header>
+        <ion-card-title>Your Orders</ion-card-title>
+      </ion-card-header>
+      
+      <ion-card-content>
+        <ion-select [(ngModel)]="selectedStatus" (ionChange)="onStatusChange()">
+          <ion-select-option value="all">All</ion-select-option>
+          <ion-select-option value="pending">Pending</ion-select-option>
+          <ion-select-option value="order-processed">Processed</ion-select-option>
+          <ion-select-option value="checked-out">Checked Out</ion-select-option>
+        </ion-select>
+  
+        <ion-grid>
+          <ion-row>
+            <ion-col size="12" size-sm="6" size-md="4" size-lg="3" *ngFor="let order of displayedOrders">
+              <ion-card>
+                <ion-card-header>
+                  <ion-card-subtitle>Order #{{ order.order_id }}</ion-card-subtitle>
+                  <ion-card-title>{{ order.status }}</ion-card-title>
+                </ion-card-header>
+                <ion-card-content>
+                  <p>Type: {{ order.order_type }}</p>
+                  <p>Amount: R{{ order.total_amount }}</p>
+                  <p>Created: {{ order.created_at | date:'short' }}</p>
+                </ion-card-content>
+              </ion-card>
+            </ion-col>
+          </ion-row>
+        </ion-grid>
+  
+        <ion-button *ngIf="!showAllOrders && allOrders.length > 3" expand="block" fill="clear" (click)="toggleShowAllOrders()">
+          Show More
+        </ion-button>
+        <ion-button *ngIf="showAllOrders" expand="block" fill="clear" (click)="toggleShowAllOrders()">
+          Show Less
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+  
+    <!-- No Orders Found -->
+    <div *ngIf="allOrders.length === 0 && !ordersLoading && !ordersError" class="ion-text-center ion-padding">
+      <h2>No Orders Found</h2>
+      <p>You haven't placed any orders yet.</p>
+    </div>
+  
+    <!-- Error Section -->
+    <div *ngIf="ordersError" class="ion-text-center ion-padding">
+      <ion-text color="danger">
+        <p>{{ ordersError }}</p>
+      </ion-text>
+    </div>
+    <!-- Loading Spinner -->
+    <ion-spinner *ngIf="ordersLoading" class="ion-padding"></ion-spinner>
+  </div>
+</ion-content>

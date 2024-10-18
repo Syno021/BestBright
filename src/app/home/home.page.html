@@ -1,0 +1,80 @@
+
+<ion-menu contentId="main-content" side="start">
+  <ion-header>
+    <ion-toolbar>
+      <ion-title>Menu</ion-title>
+    </ion-toolbar>
+  </ion-header>
+  <ion-content>
+  </ion-content>
+</ion-menu>
+<ion-content [fullscreen]="true" id="main-content">
+  <div class="hero">
+    <div class="hero-content">
+      <h1>Welcome to Best Brightness</h1>
+      <p>Find the best products at unbeatable prices!</p>
+      <div class="hero-buttons">
+        <button class="full-button" expand="block" size="large" (click)="Signup()">
+          <ion-icon name="log-in-outline" slot="start"></ion-icon>
+          Register/Login
+        </button>
+      </div>
+    </div>
+  </div>
+  <h2 class="section-title">Featured Promotions</h2>
+  <ion-row>
+    <ion-col size="12" size-sm="6" size-md="4" *ngFor="let product of promotedProducts.slice(0, 6)">
+      <div class="product-grid">
+        <div class="product-item">
+          <div class="product-image">
+            <img [src]="product.image_url || product.image" [alt]="product.name" />
+            <div class="badge-container">
+              <span class="badge promotion">{{ product.promotionName }}</span>
+            </div>
+          </div>
+          <div class="product-details">
+            <p class="product-name">{{ product.name }}</p>
+            <p class="product-description">{{ product.description }}</p>
+            <div class="price-container">
+              <span class="price strikethrough">
+                R{{ product.price | number:'1.2-2' }}
+              </span>
+              <span class="discounted-price">
+                R{{ product.discountedPrice | number:'1.2-2' }}
+              </span>
+            </div>
+            <div *ngIf="product.stock_quantity > 0; else outOfStock">
+              <div class="quantity-controls">
+                <button (click)="decreaseQuantity(product)">-</button>
+                <span>{{ product.quantity }}</span>
+                <button (click)="increaseQuantity(product)">+</button>
+              </div>
+              <button class="add-to-cart" (click)="addToCart(product)">Add to Cart</button>
+            </div>
+            <ng-template #outOfStock>
+              <p class="out-of-stock">Out of Stock</p>
+            </ng-template>
+          </div>
+        </div>
+      </div>
+    </ion-col>
+  </ion-row>
+ 
+  <div class="animated-cards">
+    <div class="card" (click)="browseProducts()">
+      <ion-icon name="apps-outline"></ion-icon>
+      <h2>Browse all Products</h2>
+      <p>Explore our wide range of products</p>
+    </div>
+    <div class="card" (click)="viewAccount()">
+      <ion-icon name="person-outline"></ion-icon>
+      <h2>View Account</h2>
+      <p>Manage your profile and orders</p>
+    </div>
+  </div>
+</ion-content>
+<ion-footer class="ion-no-border">
+  <ion-toolbar>
+    <ion-title size="small">&copy; 2024 Inventory Store</ion-title>
+  </ion-toolbar>
+</ion-footer>

@@ -1,0 +1,22 @@
+/* app.component.scss */
+.subheader {
+    --background: var(--ion-color-light);
+    --min-height: 40px;
+  
+    ion-button {
+      --color: var(--ion-color-medium);
+      text-transform: none;
+      font-size: 14px;
+  
+      &.selected {
+        --color: var(--ion-color-primary);
+        font-weight: bold;
+      }
+    }
+  }
+  
+  @media (max-width: 767px) {
+    .subheader {
+      display: none;
+    }
+  }
