@@ -87,10 +87,14 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         } else {
             echo json_encode(['order_count' => 0]);
         }
-    } else if (isset($_GET['id'])) {
-        // View a specific order
+    }
+    else if (isset($_GET['id'])) {
+        // View a specific order with user details
         $order_id = $_GET['id'];
-        $sql = "SELECT * FROM ORDERS WHERE order_id = ?";
+        $sql = "SELECT o.*, u.username, u.first_name, u.last_name, u.email, u.role 
+                FROM ORDERS o
+                JOIN users u ON o.user_id = u.user_id
+                WHERE o.order_id = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("i", $order_id);
         $stmt->execute();
@@ -99,8 +103,11 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if ($result->num_rows > 0) {
             $order = $result->fetch_assoc();
             
-            // Fetch order items
-            $items_sql = "SELECT * FROM ORDER_ITEMS WHERE order_id = ?";
+            // Fetch order items with product details including image_url
+            $items_sql = "SELECT oi.*, p.name AS product_name, p.image_url 
+                          FROM ORDER_ITEMS oi
+                          JOIN products p ON oi.product_id = p.product_id
+                          WHERE oi.order_id = ?";
             $items_stmt = $conn->prepare($items_sql);
             $items_stmt->bind_param("i", $order_id);
             $items_stmt->execute();
@@ -110,12 +117,44 @@ else if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             while ($item = $items_result->fetch_assoc()) {
                 $order['items'][] = $item;
             }
+
+            // Separate user details
+            $user_details = array(
+                'user_id' => $order['user_id'],
+                'username' => $order['username'],
+                'first_name' => $order['first_name'],
+                'last_name' => $order['last_name'],
+                'email' => $order['email'],
+                'role' => $order['role']
+            );
+
+            // Remove user details from order array
+            unset($order['username'], $order['first_name'], $order['last_name'], $order['email'], $order['role']);
             
-            echo json_encode(array("success" => true, "order" => $order));
+            echo json_encode(array("success" => true, "order" => $order, "user" => $user_details));
         } else {
             echo json_encode(array("success" => false, "message" => "Order not found"));
         }
-    } else {
+    } 
+    else if (isset($_GET['user_id'])) {
+        // Fetch orders for a specific user
+        $user_id = $_GET['user_id'];
+        $sql = "SELECT * FROM ORDERS WHERE user_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        $data = [];
+        if ($result->num_rows > 0) {
+            while ($row = $result->fetch_assoc()) {
+                $data[] = $row;
+            }
+        }
+
+        echo json_encode(['success' => true, 'orderData' => $data]);
+    }
+    else {
         // Return all orders data (original functionality)
         $sql = "SELECT * FROM ORDERS"; 
         $result = $conn->query($sql);
