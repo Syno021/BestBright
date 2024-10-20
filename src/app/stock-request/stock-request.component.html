@@ -1,76 +1,77 @@
 <!-- stock-request.component.html -->
 <ion-content [fullscreen]="true">
-  <ion-card class="custom-card">
-    <ion-card-header>
-      <ion-card-title>Low Stock Alerts</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <div class="alert">
-        <p><strong>Low Stock Alert:</strong> The following items are running low:</p>
-        <ul>
-          <li *ngFor="let item of lowStockAlert">
-            {{ item.name }} (ID: {{ item.product_id }}) - Current Stock: <span class="stock-status stock-low">{{ item.stock_quantity }}</span>
-          </li>
-        </ul>
-      </div>
-    </ion-card-content>
-  </ion-card>
+        <ion-card class="custom-card">
+            <ion-card-header>
+                <ion-card-title>Low Stock Alerts</ion-card-title>
+                <ion-icon name="close-circle-outline" slot="end" (click)="closeModal()"></ion-icon>
+            </ion-card-header>
+            <ion-card-content>
+                <div class="alert">
+                    <p><strong>Low Stock Alert:</strong> The following items are running low:</p>
+                    <ul>
+                        <li *ngFor="let item of lowStockAlert">
+                            {{ item.name }} (ID: {{ item.product_id }}) - Current Stock: <span class="stock-status stock-low">{{ item.stock_quantity }}</span>
+                        </li>
+                    </ul>
+                </div>
+            </ion-card-content>
+        </ion-card>
 
-  <form [formGroup]="productForm" (ngSubmit)="addToList()">
-    <ion-item>
-      <ion-label position="stacked">Products</ion-label>
-      <ion-select formControlName="product_id" placeholder="Select products">
-        <ion-select-option *ngFor="let product of products" [value]="product.product_id">
-          {{product.name}}
-        </ion-select-option>
-      </ion-select>
-    </ion-item>
-    <ion-item>
-      <ion-label position="stacked">Quantity of product</ion-label>
-      <ion-input type="number" formControlName="quantity"></ion-input>
-    </ion-item>
-    <button class="full-button" expand="block" type="submit">Add to list</button>
-  </form>
+        <form [formGroup]="productForm" (ngSubmit)="addToList()">
+            <ion-item>
+                <ion-label position="stacked">Products</ion-label>
+                <ion-select formControlName="product_id" placeholder="Select products">
+                    <ion-select-option *ngFor="let product of products" [value]="product.product_id">
+                        {{product.name}}
+                    </ion-select-option>
+                </ion-select>
+            </ion-item>
+            <ion-item>
+                <ion-label position="stacked">Quantity of product</ion-label>
+                <ion-input type="number" formControlName="quantity"></ion-input>
+            </ion-item>
+            <button class="full-button" type="submit">Add to list</button>
+        </form>
 
-  <ion-card *ngIf="selectedProducts.length > 0">
-    <ion-card-header>
-      <ion-card-title>Selected Products</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <table>
-        <thead>
-          <tr>
-            <th>Product Name</th>
-            <th>Quantity</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let product of selectedProducts; let i = index">
-            <td>{{ product.name }}</td>
-            <td>{{ product.quantity }}</td>
-            <td>
-              <ion-button fill="clear" color="danger" (click)="removeFromList(i)">
-                <ion-icon name="trash-outline"></ion-icon>
-              </ion-button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </ion-card-content>
-  </ion-card>
+        <ion-card *ngIf="selectedProducts.length > 0" class="custom-card">
+            <ion-card-header>
+                <ion-card-title>Selected Products</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Quantity</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let product of selectedProducts; let i = index">
+                            <td>{{ product.name }}</td>
+                            <td>{{ product.quantity }}</td>
+                            <td>
+                                <ion-button fill="clear" color="danger" (click)="removeFromList(i)">
+                                    <ion-icon name="trash-outline"></ion-icon>
+                                </ion-button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </ion-card-content>
+        </ion-card>
 
-  <form [formGroup]="stockRequestForm" (ngSubmit)="requestNewStock()">
-    <ion-item>
-      <ion-label position="stacked">Supplier email</ion-label>
-      <ion-input type="email" formControlName="supplierEmail"></ion-input>
-    </ion-item>
-    <ion-item>
-      <ion-label position="stacked">Message</ion-label>
-      <ion-textarea formControlName="message" rows="4"></ion-textarea>
-    </ion-item>
-    <ion-button expand="block" type="submit" [disabled]="!stockRequestForm.valid || selectedProducts.length === 0">
-      Request new Stock
-    </ion-button>
-  </form>
+        <form [formGroup]="stockRequestForm" (ngSubmit)="requestNewStock()">
+            <ion-item>
+                <ion-label position="stacked">Supplier email</ion-label>
+                <ion-input type="email" formControlName="supplierEmail"></ion-input>
+            </ion-item>
+            <ion-item>
+                <ion-label position="stacked">Message</ion-label>
+                <ion-textarea formControlName="message" rows="4"></ion-textarea>
+            </ion-item>
+            <ion-button expand="block" type="submit" [disabled]="!stockRequestForm.valid || selectedProducts.length === 0" class="full-button">
+                Request new Stock
+            </ion-button>
+        </form>
 </ion-content>

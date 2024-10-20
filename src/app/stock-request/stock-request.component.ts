@@ -129,6 +129,9 @@ export class StockRequestComponent implements OnInit {
     toast.present();
   }
 
+  closeModal() {
+    this.modalController.dismiss();
+  }
 
   async requestNewStock() {
     if (this.stockRequestForm.valid && this.selectedProducts.length > 0) {
