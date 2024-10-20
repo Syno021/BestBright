@@ -20,10 +20,11 @@ import { HttpClientModule } from '@angular/common/http';
 import { CategoryManagementComponent } from './category-management/category-management.component';
 import { PromotionManagementComponent } from './promotion-management/promotion-management.component';
 import { PaymentgateComponent } from './paymentgate/paymentgate.component';
+import { StockRequestComponent } from './stock-request/stock-request.component';
 
 @NgModule({
   
-  declarations: [AppComponent, NavbarComponent, CategoryManagementComponent, PromotionManagementComponent, PaymentgateComponent],
+  declarations: [AppComponent, NavbarComponent, CategoryManagementComponent, PromotionManagementComponent, PaymentgateComponent, StockRequestComponent],
   imports: [
     BrowserModule,
     FormsModule,

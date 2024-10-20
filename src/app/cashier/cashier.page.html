@@ -124,7 +124,7 @@
           <ion-label>User ID: {{ currentOrderDetails.user_id }}</ion-label>
         </ion-item>
         <ion-item>
-          <ion-label>Total Amount: {{ currentOrderDetails.total_amount }}</ion-label>
+          <ion-label>Total Amount: R{{ currentOrderDetails.total_amount }}</ion-label>
         </ion-item>
         <ion-item>
           <ion-label>Order Type: {{ currentOrderDetails.order_type }}</ion-label>
@@ -167,7 +167,7 @@
             <h2>{{ item.product_name }}</h2>
             <p>Product ID: {{ item.product_id }}</p>
             <p>Quantity: {{ item.quantity }}</p>
-            <p>Price: {{ item.price }}</p>
+            <p>Price: {{ item.price_per_unit }}</p>
           </ion-label>
         </ion-item>
       </ion-list>

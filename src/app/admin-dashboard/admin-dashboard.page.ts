@@ -31,6 +31,18 @@ interface RecentActivity {
   status?: string;
   payment_method?: string;
 }
+
+interface ProductMovement {
+  product_id: number;
+  name: string;
+  category: string;
+  stock_quantity: number;
+  total_quantity_out: number;
+  daily_movement: { [date: string]: number };
+  weekly_movement: number[];
+  monthly_movement: number;
+}
+
 @Component({
   selector: 'app-admin-dashboard',
   templateUrl: './admin-dashboard.page.html',
@@ -48,6 +60,9 @@ export class AdminDashboardPage implements OnInit, AfterViewInit {
   recentActivities: RecentActivity[] = [];
   isLoadingActivities = false;
   activitiesError: string | null = null;
+
+  fastMovingProducts: ProductMovement[] = [];
+  slowMovingProducts: ProductMovement[] = [];
 
   constructor(private http: HttpClient, private router: Router,  private animationCtrl: AnimationController) { }
 

@@ -110,65 +110,9 @@
     </ion-card-content>
   </ion-card>
 
-  <!-- View Slow/Fast Moving Items -->
-  <ion-card class="custom-card">
-    <ion-card-header>
-      <ion-card-title>Slow/Fast Moving Items</ion-card-title>
-    </ion-card-header>
-    <ion-card-content>
-      <ion-segment [(ngModel)]="selectedMovementView" (ionChange)="toggleMovementView($event)">
-        <ion-segment-button value="fast">
-          <ion-label>Fast Moving</ion-label>
-        </ion-segment-button>
-        <ion-segment-button value="slow">
-          <ion-label>Slow Moving</ion-label>
-        </ion-segment-button>
-      </ion-segment>
-  
-      <ion-list>
-        <ng-container *ngIf="selectedMovementView === 'fast'">
-          <ion-item *ngFor="let item of fastMoving" class="movement-item">
-            <ion-label>
-              <h2>{{ item.name }}</h2>
-              <p>Category: {{ item.category }}</p>
-              <p class="movement-rate" [ngClass]="getMovementStatusClass(item)">
-                Movement Rate: {{ formatMovementRate(item) }}
-              </p>
-            </ion-label>
-            <ion-note slot="end">
-              Stock: {{ item.stock_quantity }} units
-              <br>
-              Sales: {{ item.total_quantity_out }}
-            </ion-note>
-          </ion-item>
-        </ng-container>
-  
-        <ng-container *ngIf="selectedMovementView === 'slow'">
-          <ion-item *ngFor="let item of slowMoving" class="movement-item">
-            <ion-label>
-              <h2>{{ item.name }}</h2>
-              <p>Category: {{ item.category }}</p>
-              <p class="movement-rate" [ngClass]="getMovementStatusClass(item)">
-                Movement Rate: {{ formatMovementRate(item) }}
-              </p>
-            </ion-label>
-            <ion-note slot="end">
-              Stock: {{ item.stock_quantity }} units
-              <br>
-              Sales: {{ item.total_quantity_out }}
-            </ion-note>
-          </ion-item>
-        </ng-container>
-  
-        <ion-item *ngIf="(selectedMovementView === 'fast' && fastMoving.length === 0) || 
-                         (selectedMovementView === 'slow' && slowMoving.length === 0)">
-          <ion-label class="ion-text-center">
-            No {{ selectedMovementView }} moving items found
-          </ion-label>
-        </ion-item>
-      </ion-list>
-    </ion-card-content>
-  </ion-card>
+  <button class="half-button" (click)="openStockRequest()">
+    Request New Stock
+  </button>
 
   <!-- Modal for adding items -->
   <ion-modal #addItemModal class="custom-modal">

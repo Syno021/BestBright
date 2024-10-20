@@ -1,7 +1,5 @@
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { IonModal } from '@ionic/angular';
-import { FormsModule } from '@angular/forms';
-import { IonicModule } from '@ionic/angular';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { AngularFireStorage } from '@angular/fire/compat/storage';
 import { AngularFirestore } from '@angular/fire/compat/firestore';
@@ -18,6 +16,7 @@ import {
 } from '@ionic/angular';
 import { CategoryManagementComponent } from '../category-management/category-management.component';
 import { PromotionManagementComponent } from '../promotion-management/promotion-management.component';
+import { StockRequestComponent } from '../stock-request/stock-request.component';
 
 interface Product {
   product_id: number;
@@ -36,8 +35,6 @@ interface Product {
   total_quantity_out: number;  // Changed from quantity_out
   monthly_movement: number;
 }
-
-
 
 interface Category {
   category_id: number;
@@ -92,6 +89,7 @@ export class AdminInventoryManagementPage implements OnInit {
   selectedCategory: string = '';
   selectedStatus: string = '';
   selectedStockLevel: string = '';
+  filtersApplied: boolean = false;
   constructor(
     private http: HttpClient,
     private alertController: AlertController,
@@ -101,12 +99,15 @@ export class AdminInventoryManagementPage implements OnInit {
     private storage: AngularFireStorage,
     private cameraService: CameraService,
     private modalController: ModalController
-  ) { }
+  ) { 
+    this.initializeFilteredProducts();
+  }
 
   ngOnInit() {
     this.loadProducts();
     this.loadCategories();
     this.loadProductMovement();
+    this.initializeFilteredProducts();
   }
 
   ngAfterViewInit() {
@@ -153,6 +154,13 @@ export class AdminInventoryManagementPage implements OnInit {
     return await modal.present();
   }
 
+  async openStockRequest() {
+    const modal = await this.modalController.create({
+      component: StockRequestComponent
+    });
+    return await modal.present();
+  }
+
   async openPromotionManagementModal() {
     const modal = await this.modalController.create({
       component: PromotionManagementComponent
@@ -169,7 +177,16 @@ export class AdminInventoryManagementPage implements OnInit {
     this.clearFields();
   }
 
+  initializeFilteredProducts() {
+    this.filteredProducts = [...this.products];
+  }
+
   applyFilters() {
+    if (!this.filtersApplied) {
+      this.initializeFilteredProducts();
+      return;
+    }
+
     this.filteredProducts = this.products.filter(product => {
       const matchesSearch = this.searchQuery ? 
         product.name.toLowerCase().includes(this.searchQuery.toLowerCase()) : true;
@@ -204,22 +221,35 @@ export class AdminInventoryManagementPage implements OnInit {
   // Event handlers for filters
   onSearchChange(event: any) {
     this.searchQuery = event.detail.value;
+    this.filtersApplied = true;
     this.applyFilters();
   }
 
   onCategoryChange(event: any) {
     this.selectedCategory = event.detail.value;
+    this.filtersApplied = true;
     this.applyFilters();
   }
 
   onStatusChange(event: any) {
     this.selectedStatus = event.detail.value;
+    this.filtersApplied = true;
     this.applyFilters();
   }
 
   onStockLevelChange(event: any) {
     this.selectedStockLevel = event.detail.value;
+    this.filtersApplied = true;
     this.applyFilters();
+  }
+
+  resetFilters() {
+    this.searchQuery = '';
+    this.selectedCategory = '';
+    this.selectedStatus = '';
+    this.selectedStockLevel = '';
+    this.filtersApplied = false;
+    this.initializeFilteredProducts();
   }
 
   loadProducts() {
