@@ -9,34 +9,36 @@
         (ionChange)="onSearchChange($event)">
       </ion-searchbar>
       
-      <ion-item>
-        <ion-label>Category</ion-label>
-        <ion-select [(ngModel)]="selectedCategory" (ionChange)="onCategoryChange($event)">
-          <ion-select-option value="">All Categories</ion-select-option>
-          <ion-select-option *ngFor="let category of categories" [value]="category.name">
-            {{ category.name }}
-          </ion-select-option>
-        </ion-select>
-      </ion-item>
+      <div class="filter-container">
+        <ion-item>
+          <ion-label>Category</ion-label>
+          <ion-select [(ngModel)]="selectedCategory" (ionChange)="onCategoryChange($event)">
+            <ion-select-option value="">All Categories</ion-select-option>
+            <ion-select-option *ngFor="let category of categories" [value]="category.name">
+              {{ category.name }}
+            </ion-select-option>
+          </ion-select>
+        </ion-item>
 
-      <ion-item>
-        <ion-label>Status</ion-label>
-        <ion-select [(ngModel)]="selectedStatus" (ionChange)="onStatusChange($event)">
-          <ion-select-option value="">All Status</ion-select-option>
-          <ion-select-option value="available">Available</ion-select-option>
-          <ion-select-option value="outofstock">Out of Stock</ion-select-option>
-        </ion-select>
-      </ion-item>
+        <ion-item>
+          <ion-label>Status</ion-label>
+          <ion-select [(ngModel)]="selectedStatus" (ionChange)="onStatusChange($event)">
+            <ion-select-option value="">All Status</ion-select-option>
+            <ion-select-option value="available">Available</ion-select-option>
+            <ion-select-option value="outofstock">Out of Stock</ion-select-option>
+          </ion-select>
+        </ion-item>
 
-      <ion-item>
-        <ion-label>Stock Level</ion-label>
-        <ion-select [(ngModel)]="selectedStockLevel" (ionChange)="onStockLevelChange($event)">
-          <ion-select-option value="">All Levels</ion-select-option>
-          <ion-select-option value="low">Low Stock (<75)</ion-select-option>
-          <ion-select-option value="medium">Medium Stock (75-150)</ion-select-option>
-          <ion-select-option value="high">High Stock (>150)</ion-select-option>
-        </ion-select>
-      </ion-item>
+        <ion-item>
+          <ion-label>Stock Level</ion-label>
+          <ion-select [(ngModel)]="selectedStockLevel" (ionChange)="onStockLevelChange($event)">
+            <ion-select-option value="">All Levels</ion-select-option>
+            <ion-select-option value="low">Low Stock (&lt;75)</ion-select-option>
+            <ion-select-option value="medium">Medium Stock (75-150)</ion-select-option>
+            <ion-select-option value="high">High Stock (&gt;150)</ion-select-option>
+          </ion-select>
+        </ion-item>
+      </div>
     </ion-card-content>
   </ion-card>
 

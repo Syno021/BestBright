@@ -117,7 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
 
 elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getProductMovement') {
     // Get the current date and 30 days ago
-    try {
     $currentDate = date('Y-m-d');
     $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
 
@@ -173,17 +172,10 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET[
     $fastMoving = array_slice($productMovement, 0, 10);
     $slowMoving = array_slice($productMovement, -10);
 
-    header('Content-Type: application/json');
-        echo json_encode([
-            'fastMoving' => $fastMoving,
-            'slowMoving' => $slowMoving
-        ]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Internal server error: ' . $e->getMessage()]);
-    }
-    exit();
+    sendJsonResponse([
+        'fastMoving' => $fastMoving,
+        'slowMoving' => $slowMoving
+    ]);
 }
-
 $conn->close();
 ?>

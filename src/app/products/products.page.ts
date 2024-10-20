@@ -4,6 +4,7 @@ import { ToastController, IonSearchbar } from '@ionic/angular';
 import { CartService } from '../services/cart.service';
 import { PromotionService } from '../services/promotion.service'; 
 import { NavController } from '@ionic/angular';
+import { Router } from '@angular/router';
 
 interface Product {
   product_id: number;
@@ -56,6 +57,7 @@ export class ProductsPage implements OnInit {
     private navCtrl: NavController,
     private toastController: ToastController,
     private promotionService: PromotionService,
+    private router: Router,
   ) {}
 
   ngOnInit() {
@@ -69,6 +71,12 @@ export class ProductsPage implements OnInit {
     if (!this.userId) {
       console.warn('User is not logged in');
     }
+  }
+
+  viewAccount() {
+    this.router.navigate(['/account']);
+    console.log('Navigating to account page');
+    // Add navigation logic here
   }
 
   loadProducts() {
