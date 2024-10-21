@@ -1,8 +1,19 @@
 import { Component, OnInit, ViewChild } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { AlertController, ToastController, IonModal } from '@ionic/angular';
+import { AlertController, ToastController, IonModal, LoadingController } from '@ionic/angular';
 import { catchError, tap } from 'rxjs/operators';
 import { Observable, of, throwError } from 'rxjs';
+import { AngularFirestore, DocumentSnapshot } from '@angular/fire/compat/firestore';
+
+interface User {
+  user_id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
 
 @Component({
   selector: 'app-admin-order-management',
@@ -13,6 +24,7 @@ export class AdminOrderManagementPage implements OnInit {
   @ViewChild('updateStatusModal') updateStatusModal!: IonModal;
   @ViewChild('viewOrderModal') viewOrderModal!: IonModal;
   currentOrderDetails: any = null;
+  currentUserDetails: User | null = null;
   
   orderData: any[] = [];
   selectedStatus: string = '';
@@ -24,11 +36,14 @@ export class AdminOrderManagementPage implements OnInit {
 
   itemsPerPage: number = 10;
   currentPage: number = 1;
+  firebaseDocument: any = null;
 
   constructor(
     private http: HttpClient,
     private alertController: AlertController,
-    private toastController: ToastController
+    private toastController: ToastController,
+    private loadingController: LoadingController,
+    private firestore: AngularFirestore
   ) { }
 
   ngOnInit() {
@@ -103,6 +118,11 @@ export class AdminOrderManagementPage implements OnInit {
   }
 
   async viewOrderDetails(order: any) {
+    const loader = await this.loadingController.create({
+      message: 'Loading order details...',
+    });
+    await loader.present();
+
     this.http.get(`http://localhost/user_api/orders.php?id=${order.order_id}`)
       .pipe(
         catchError(error => {
@@ -111,14 +131,130 @@ export class AdminOrderManagementPage implements OnInit {
           return throwError(() => error);
         })
       )
-      .subscribe((response: any) => {
+      .subscribe(async (response: any) => {
         if (response.success) {
           this.currentOrderDetails = response.order;
-          this.viewOrderModal.present();
+          this.currentUserDetails = response.user;
+          console.log('Current User Details:', this.currentUserDetails);
+          
+          // Fetch Firebase document
+          await this.fetchFirebaseDocument(order.order_id);
+          
+          loader.dismiss();
+          await this.viewOrderModal.present();
         } else {
+          loader.dismiss();
           this.presentToast(response.message || 'Failed to fetch order details', 'danger');
         }
       });
+  }
+
+  async fetchFirebaseDocument(orderId: string) {
+    try {
+      const docRef = this.firestore.collection('uploads').doc(orderId);
+      const docSnapshot = await docRef.get().toPromise();
+      
+      if (docSnapshot && docSnapshot.exists) {
+        this.firebaseDocument = docSnapshot.data();
+        console.log('Firebase document:', this.firebaseDocument);
+      } else {
+        this.firebaseDocument = null;
+        console.log('No matching document in Firebase');
+      }
+    } catch (error) {
+      console.error('Error fetching Firebase document:', error);
+      this.firebaseDocument = null;
+    }
+  }
+
+  openDocument(url: string) {
+    if (url) {
+      window.open(url, '_blank');
+
+    } else {
+      this.presentToast('Document URL is not available', 'danger');
+    }
+  }
+
+
+  fetchUserDetails(userId: number): Observable<User> {
+    return this.http.get<User>(`http://localhost/user_api/register.php?id=${userId}`)
+      .pipe(
+        catchError(error => {
+          console.error('Error fetching user details:', error);
+          this.presentToast('Failed to fetch user details', 'danger');
+          return throwError(() => error);
+        })
+      );
+  }
+
+  async sendOrderStatusUpdateEmail(order: any, newStatus: string): Promise<void> {
+    if (!this.currentUserDetails || !this.currentUserDetails.email) {
+      console.error('Invalid user details:', this.currentUserDetails);
+      await this.presentToast('Failed to send email: Invalid user email', 'danger');
+      return;
+    }
+
+    const loader = await this.loadingController.create({
+      message: 'Sending Email...',
+      cssClass: 'custom-loader-class'
+    });
+    await loader.present();
+
+    const user = this.currentUserDetails;
+    const url = "http://localhost/user_api/send_email.php";
+    const subject = "Order Status Update";
+
+    const body = `
+      Dear ${user.first_name} ${user.last_name},
+
+      We are writing to inform you that the status of your order (Order ID: ${order.order_id}) has been updated.
+
+      New Status: ${newStatus}
+
+      Order Details:
+      Order ID: ${order.order_id}
+      Total Amount: ${order.total_amount || 'N/A'}
+      Order Type: ${order.order_type || 'N/A'}
+      Date Placed: ${order.created_at || 'N/A'}
+
+      If you have any questions or concerns about this update, please don't hesitate to contact our customer support team.
+
+      Thank you for your business!
+
+      Best regards,
+      The Order Management Team
+    `;
+    
+    const formData = new FormData();
+    formData.append('recipient', user.email);
+    formData.append('subject', subject);
+    formData.append('body', body);
+
+    this.http.post(url, formData).pipe(
+      catchError((error: HttpErrorResponse) => {
+        console.error('Error sending email:', error);
+        return throwError(() => new Error(error.message));
+      })
+    ).subscribe(
+      async (response: any) => {
+        loader.dismiss();
+        if (response && response.message) {
+          await this.presentToast('Status update email sent successfully!', 'success');
+        } else if (response && response.error) {
+          console.error('Email sending failed:', response.error);
+          await this.presentToast(`Failed to send status update email: ${response.error}`, 'danger');
+        } else {
+          console.error('Unexpected response:', response);
+          await this.presentToast('Failed to send status update email. Unexpected server response.', 'danger');
+        }
+      },
+      async (error) => {
+        loader.dismiss();
+        console.error('Error sending email:', error);
+        await this.presentToast(`Failed to send status update email: ${error.message}`, 'danger');
+      }
+    );
   }
 
   async openUpdateStatusModal(order: any) {
@@ -127,57 +263,62 @@ export class AdminOrderManagementPage implements OnInit {
     this.updateStatusModal.present();
   }
 
-  updateOrderStatus() {
-    if (!this.currentOrder || !this.selectedStatus) {
+  async updateOrderStatus() {
+    if (!this.currentOrderDetails || !this.selectedStatus) {
       console.error('Validation Error:', {
-        currentOrder: this.currentOrder,
+        currentOrderDetails: this.currentOrderDetails,
         selectedStatus: this.selectedStatus
       });
       this.presentToast('Please select a status', 'danger');
       return;
     }
 
+    const loader = await this.loadingController.create({
+      message: 'Updating order status...',
+    });
+    await loader.present();
+
     console.log('Attempting to update order:', {
-      orderId: this.currentOrder.order_id,
-      currentStatus: this.currentOrder.status,
+      orderId: this.currentOrderDetails.order_id,
+      currentStatus: this.currentOrderDetails.status,
       newStatus: this.selectedStatus,
       timestamp: new Date().toISOString()
     });
 
-    this.http.get<any>(`http://localhost/user_api/orders.php?id=${this.currentOrder.order_id}`)
-      .pipe(
-        catchError(this.handleError<any>('fetchOrderDetails'))
-      )
-      .subscribe((orderDetails: any) => {
-        if (orderDetails && orderDetails.success) {
-          const updateData = {
-            status: this.selectedStatus,
-            previousStatus: this.currentOrder.status
-          };
+    const updateData = {
+      status: this.selectedStatus,
+      previousStatus: this.currentOrderDetails.status
+    };
 
-          this.http.put(`http://localhost/user_api/orders.php?id=${this.currentOrder.order_id}`, updateData)
-            .pipe(
-              tap(response => {
-                console.log('Server Response:', {
-                  response,
-                  timestamp: new Date().toISOString()
-                });
-              }),
-              catchError(this.handleError<any>('updateOrderStatus'))
-            )
-            .subscribe({
-              next: (response: any) => {
-                if (response && response.success) {
-                  this.presentToast('Order status updated successfully', 'success');
-                  this.fetchOrders();
-                  this.updateStatusModal.dismiss();
-                } else {
-                  this.presentToast(response && response.message || 'Failed to update order status', 'danger');
-                }
-              }
-            });
-        } else {
-          this.presentToast('Failed to fetch order details', 'danger');
+    this.http.put(`http://localhost/user_api/orders.php?id=${this.currentOrderDetails.order_id}`, updateData)
+      .pipe(
+        tap(response => {
+          console.log('Server Response:', {
+            response,
+            timestamp: new Date().toISOString()
+          });
+        }),
+        catchError(this.handleError<any>('updateOrderStatus'))
+      )
+      .subscribe({
+        next: async (response: any) => {
+          loader.dismiss();
+          if (response && response.success) {
+            this.presentToast('Order status updated successfully', 'success');
+            this.fetchOrders();
+            
+            // Send email to user about order status update
+            await this.sendOrderStatusUpdateEmail(this.currentOrderDetails, this.selectedStatus);
+            
+            this.viewOrderModal.dismiss();
+          } else {
+            this.presentToast(response && response.message || 'Failed to update order status', 'danger');
+          }
+        },
+        error: (error) => {
+          loader.dismiss();
+          console.error('Error updating order status:', error);
+          this.presentToast('Failed to update order status', 'danger');
         }
       });
   }
