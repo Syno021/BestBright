@@ -1,0 +1,21 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Upload Document</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="dismissModal()">Close</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+<ion-content class="ion-padding">
+  <ion-item>
+    <ion-label position="stacked">Order ID</ion-label>
+    <ion-input [(ngModel)]="orderId" readonly></ion-input>
+  </ion-item>
+  <ion-item>
+    <ion-label position="stacked">Select File</ion-label>
+    <ion-input type="file" (change)="onFileSelected($event)" accept=".doc,.docx"></ion-input>
+  </ion-item>
+  <ion-button expand="block" (click)="uploadFile()" [disabled]="!selectedFile">
+    Upload
+  </ion-button>
+</ion-content>

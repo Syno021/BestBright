@@ -44,7 +44,7 @@
             <ion-col>Date</ion-col>
             <ion-col>Actions</ion-col>
           </ion-row>
-          <ion-row *ngFor="let order of filteredOrderData">
+          <ion-row *ngFor="let order of paginatedOrderData">
             <ion-col>{{ order.order_id }}</ion-col>
             <ion-col>{{ order.user_id }}</ion-col>
             <ion-col>{{ order.total_amount }}</ion-col>
@@ -65,6 +65,23 @@
           </ion-row>
         </ion-grid>
       </ion-card-content>
+      <!-- Pagination Controls -->
+      <ion-footer>
+        <ion-toolbar>
+          <ion-segment [(ngModel)]="itemsPerPage">
+            <ion-segment-button value="10">
+              10
+            </ion-segment-button>
+            <ion-segment-button value="25">
+              25
+            </ion-segment-button>
+          </ion-segment>
+          <ion-buttons slot="end">
+            <ion-button (click)="previousPage()" [disabled]="currentPage === 1">Previous</ion-button>
+            <ion-button (click)="nextPage()" [disabled]="currentPage === totalPages">Next</ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-footer>
     </ion-card>
   </ion-content>
 </ion-content>

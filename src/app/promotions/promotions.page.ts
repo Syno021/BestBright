@@ -129,16 +129,18 @@ export class PromotionsPage implements OnInit {
   }
 
   applyPromotions() {
-    this.products = this.products.map(product => {
+    this.promotedProducts = this.products.filter(product => {
       const promotion = this.promotions.find(p => p.product_ids.includes(product.product_id));
       if (promotion) {
         const discountAmount = product.price * (promotion.discount_percentage / 100);
         product.discountedPrice = this.roundToTwo(product.price - discountAmount);
         product.hasPromotion = true;
         product.promotionName = promotion.name;
+        return true;
       }
-      return product;
+      return false;
     });
+    console.log('Promoted products:', this.promotedProducts);
   }
 
   async openPromotionProductsModal(promotion: Promotion) {
@@ -146,7 +148,6 @@ export class PromotionsPage implements OnInit {
       .filter(product => promotion.product_ids.includes(product.product_id))
       .map(product => ({
         ...product,
-        quantity: product.quantity || 1  // Ensure quantity is set, default to 1 if not present
       }));
   
       await this.promotionProductsModal?.present();

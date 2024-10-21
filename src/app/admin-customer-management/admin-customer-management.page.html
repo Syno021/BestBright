@@ -29,7 +29,7 @@
         </ion-row>
 
         <!-- Add customer rows here -->
-        <ion-row *ngFor="let user of filteredUsers">
+        <ion-row *ngFor="let user of paginatedUsers">
           <ion-col>{{ user.user_id }}</ion-col>
           <ion-col>{{ user.first_name }} {{ user.last_name }}</ion-col>
           <ion-col>{{ user.email }}</ion-col>
@@ -47,6 +47,23 @@
         </ion-row>
       </ion-grid>
     </ion-card-content>
+    <!-- Pagination Controls -->
+    <ion-footer>
+      <ion-toolbar>
+        <ion-segment [(ngModel)]="itemsPerPage">
+          <ion-segment-button value="10">
+            10
+          </ion-segment-button>
+          <ion-segment-button value="25">
+            25
+          </ion-segment-button>
+        </ion-segment>
+        <ion-buttons slot="end">
+          <ion-button (click)="previousPage()" [disabled]="currentPage === 1">Previous</ion-button>
+          <ion-button (click)="nextPage()" [disabled]="currentPage === totalPages">Next</ion-button>
+        </ion-buttons>
+      </ion-toolbar>
+    </ion-footer>
   </ion-card>
 
 </ion-content>

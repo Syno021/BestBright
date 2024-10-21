@@ -2,7 +2,6 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 16px;
-  padding: 16px;
 }
 
 .product-item {
@@ -17,17 +16,9 @@
 
 .product-image {
   position: relative;
-  height: 150px;
-  overflow: hidden;
+  height: 100px;
 }
 
-.product-image img {
-  height: 120px;
-  width: 100%;
-  object-fit: contain; /* Ensures the image fits within the card without cropping */
-  object-position: center; /* Centers the image within the card */
-  background-color: #f4f5f8;
-}
 
 .compact-card img {
   height: 120px;
@@ -161,23 +152,23 @@
 }
 
 @media (min-width: 768px) {
-  .product-grid {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    .product-grid {
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+  
+    .product-image {
+      height: 200px;
+    }
+  
+    .product-name {
+      font-size: 1rem;
+    }
+  
+    .product-description {
+      font-size: 0.9rem;
+    }
+  
+    .price, .add-to-cart {
+      font-size: 0.9rem;
+    }
   }
-
-  .product-image {
-    height: 200px;
-  }
-
-  .product-name {
-    font-size: 1rem;
-  }
-
-  .product-description {
-    font-size: 0.9rem;
-  }
-
-  .price, .add-to-cart {
-    font-size: 0.9rem;
-  }
-}

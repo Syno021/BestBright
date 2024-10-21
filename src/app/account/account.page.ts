@@ -1,9 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { ToastController } from '@ionic/angular';
+import { ModalController, ToastController } from '@ionic/angular';
 import { of } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
+import { FileUploadComponent } from '../file-upload/file-upload.component';
 
 interface User {
   user_id: number;
@@ -48,7 +49,8 @@ export class AccountPage implements OnInit {
   constructor(
     private http: HttpClient,
     private router: Router,
-    private toastController: ToastController
+    private toastController: ToastController,
+    private modalController: ModalController
   ) {}
 
   ngOnInit() {
@@ -66,6 +68,16 @@ export class AccountPage implements OnInit {
     }
     
     this.fetchUserDetails();
+  }
+
+  async openFileUploadModal(orderId: Number) {
+    const modal = await this.modalController.create({
+      component: FileUploadComponent,
+      componentProps: {
+        orderId: orderId
+      }
+    });
+    return await modal.present();
   }
   
   private fetchUserDetails() {

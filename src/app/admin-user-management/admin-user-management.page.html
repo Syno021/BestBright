@@ -33,23 +33,40 @@
           <ion-col>Role</ion-col>
           <ion-col>Actions</ion-col>
         </ion-row>
-        <ion-row *ngFor="let user of filteredUsers">
+        <ion-row *ngFor="let user of paginatedUsers">
           <ion-col>{{ user.user_id }}</ion-col>
           <ion-col>{{ user.first_name }} {{ user.last_name }}</ion-col>
           <ion-col>{{ user.email }}</ion-col>
           <ion-col>{{ user.role }}</ion-col>
           <ion-col>
-
             <ion-button (click)="editUser(user)" fill="clear" color="primary">
               <ion-icon name="eye-outline"></ion-icon> <!-- View Details icon -->
             </ion-button>
             <ion-button (click)="deleteUser(user.user_id)" fill="clear" color="danger">
-              <ion-icon name="trash-outline"></ion-icon> <!-- Cancel Order icon -->
+              <ion-icon name="trash-outline"></ion-icon> <!-- Delete User icon -->
             </ion-button>
           </ion-col>
         </ion-row>
       </ion-grid>
     </ion-card-content>
+
+    <!-- Pagination Controls -->
+    <ion-footer>
+      <ion-toolbar>
+        <ion-segment [(ngModel)]="itemsPerPage">
+          <ion-segment-button value="10">
+            10
+          </ion-segment-button>
+          <ion-segment-button value="25">
+            25
+          </ion-segment-button>
+        </ion-segment>
+        <ion-buttons slot="end">
+          <ion-button (click)="previousPage()" [disabled]="currentPage === 1">Previous</ion-button>
+          <ion-button (click)="nextPage()" [disabled]="currentPage === totalPages">Next</ion-button>
+        </ion-buttons>
+      </ion-toolbar>
+    </ion-footer>
   </ion-card>
 
   <!-- Action Buttons -->

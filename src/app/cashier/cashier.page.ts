@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { AlertController, ToastController, IonModal, LoadingController } from '@ionic/angular';
 import { catchError, tap } from 'rxjs/operators';
 import { Observable, of, throwError } from 'rxjs';
+import { AngularFirestore, DocumentSnapshot } from '@angular/fire/compat/firestore';
 
 interface User {
   user_id: number;
@@ -32,15 +33,41 @@ export class CashierPage implements OnInit {
   filterValue: string = '';
   filteredOrderData: any[] = [];
 
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
+  firebaseDocument: any = null;
+
   constructor(
     private http: HttpClient,
     private alertController: AlertController,
     private toastController: ToastController,
-    private loadingController: LoadingController
+    private loadingController: LoadingController,
+    private firestore: AngularFirestore
   ) { }
 
   ngOnInit() {
     this.fetchOrders();
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.orderData.length / this.itemsPerPage);
+  }
+
+  get paginatedOrderData(): any[] {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    return this.orderData.slice(start, start + this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+    }
   }
 
   fetchOrders() {
@@ -104,16 +131,48 @@ export class CashierPage implements OnInit {
         })
       )
       .subscribe(async (response: any) => {
-        loader.dismiss();
         if (response.success) {
           this.currentOrderDetails = response.order;
           this.currentUserDetails = response.user;
           console.log('Current User Details:', this.currentUserDetails);
+          
+          // Fetch Firebase document
+          await this.fetchFirebaseDocument(order.order_id);
+          
+          loader.dismiss();
           await this.viewOrderModal.present();
         } else {
+          loader.dismiss();
           this.presentToast(response.message || 'Failed to fetch order details', 'danger');
         }
       });
+  }
+
+  async fetchFirebaseDocument(orderId: string) {
+    try {
+      const docRef = this.firestore.collection('uploads').doc(orderId);
+      const docSnapshot = await docRef.get().toPromise();
+      
+      if (docSnapshot && docSnapshot.exists) {
+        this.firebaseDocument = docSnapshot.data();
+        console.log('Firebase document:', this.firebaseDocument);
+      } else {
+        this.firebaseDocument = null;
+        console.log('No matching document in Firebase');
+      }
+    } catch (error) {
+      console.error('Error fetching Firebase document:', error);
+      this.firebaseDocument = null;
+    }
+  }
+
+  openDocument(url: string) {
+    if (url) {
+      window.open(url, '_blank');
+
+    } else {
+      this.presentToast('Document URL is not available', 'danger');
+    }
   }
 
 

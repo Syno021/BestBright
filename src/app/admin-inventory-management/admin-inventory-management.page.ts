@@ -90,6 +90,9 @@ export class AdminInventoryManagementPage implements OnInit {
   selectedStatus: string = '';
   selectedStockLevel: string = '';
   filtersApplied: boolean = false;
+
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
   constructor(
     private http: HttpClient,
     private alertController: AlertController,
@@ -113,6 +116,27 @@ export class AdminInventoryManagementPage implements OnInit {
   ngAfterViewInit() {
     // Ensure the video element is available
     console.log('Video element:', this.videoElement);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredProducts.length / this.itemsPerPage);
+  }
+
+  get paginatedProducts(): any[] {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    return this.filteredProducts.slice(start, start + this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+    }
   }
 
   loadProductMovement() {

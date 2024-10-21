@@ -15,6 +15,13 @@ import { UserOptions } from 'jspdf-autotable';
 import { LoadingController} from '@ionic/angular';
 // import { AddressModalComponent } from './address-modal.component';
 import { PaymentgateComponent } from '../paymentgate/paymentgate.component';
+import { environment } from '../../environments/environment';
+
+declare global {
+  interface Window {
+    PaystackPop: any;
+  }
+}
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => void;
@@ -36,7 +43,8 @@ interface Promotion {
   styleUrls: ['./cart.page.scss'],
 })
 export class CartPage implements OnInit {
-  
+  private paystackScriptLoaded: boolean = false;
+
   cartItems: any[] = [];
   promotions: any[] = [];
   deliveryMethod: string = 'delivery';
@@ -72,8 +80,67 @@ export class CartPage implements OnInit {
     this.getUserId();
     this.getUserEmail();
     this.loadSavedAddresses();
+    this.loadPaystackScript();
   }
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+  loadPaystackScript() {
+    if (!this.paystackScriptLoaded) {
+      const script = document.createElement('script');
+      script.src = 'https://js.paystack.co/v1/inline.js';
+      script.async = true;
+      script.onload = () => {
+        this.paystackScriptLoaded = true;
+        console.log('Paystack script loaded');
+      };
+      document.body.appendChild(script);
+    }
+  }
+
+  async makePayment() {
+    if (!this.paystackScriptLoaded) {
+      await this.showToast('Paystack script not loaded yet. Please try again.');
+      return;
+    }
+
+    if (typeof window.PaystackPop === 'undefined') {
+      await this.showToast('PaystackPop is not defined. Please refresh the page and try again.');
+      return;
+    }
+
+    const handler = window.PaystackPop.setup({
+      key: environment.paystackTestPublicKey,
+      email: 'customer@email.com',
+      amount: this.discountedSubtotal, // Amount in cents
+      currency: 'ZAR', // South African Rand
+      ref: `YOUR_REFERENCE_${new Date().getTime()}`,
+      onClose: () => {
+        console.log('Payment window closed');
+      },
+      callback: (response: any) => {
+        console.log('Payment successful', response);
+        this.verifyTransaction(response.reference);
+      },
+      onError: async (error: any) => {
+        console.error('Payment error:', error);
+        await this.showToast(`Payment error: ${error.message || 'Unknown error occurred'}`);
+      }
+    });
+
+    handler.openIframe();
+  }
+
+  verifyTransaction(reference: string) {
+    // Here you would typically make an API call to your backend
+    // Your backend would then verify the transaction with Paystack
+    console.log('Verifying transaction with reference:', reference);
+  }
+
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   getUserId() {
     this.userId = sessionStorage.getItem('userId');
     if (!this.userId) {
@@ -112,7 +179,7 @@ export class CartPage implements OnInit {
       },
       error: (error) => {
         console.error('Error loading cart:', error);
-        this.showToast('Failed to load cart. Please try again later.');
+        this.showToast('User Not logged in');
       }
     });
   }

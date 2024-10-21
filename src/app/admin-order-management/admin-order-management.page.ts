@@ -22,6 +22,9 @@ export class AdminOrderManagementPage implements OnInit {
   filterValue: string = '';
   filteredOrderData: any[] = [];
 
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
+
   constructor(
     private http: HttpClient,
     private alertController: AlertController,
@@ -30,6 +33,27 @@ export class AdminOrderManagementPage implements OnInit {
 
   ngOnInit() {
     this.fetchOrders();
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.orderData.length / this.itemsPerPage);
+  }
+
+  get paginatedOrderData(): any[] {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    return this.orderData.slice(start, start + this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+    }
   }
 
   fetchOrders() {

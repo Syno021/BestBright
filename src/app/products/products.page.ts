@@ -51,6 +51,7 @@ export class ProductsPage implements OnInit {
   userId: string | null = null;
   promotions: Promotion[] = [];
 
+  searchQuery: string = '';
   constructor(
     private http: HttpClient,
     private cartService: CartService,
@@ -64,6 +65,48 @@ export class ProductsPage implements OnInit {
     this.loadProducts();
     this.getUserId();
     this.loadPromotions();
+  }
+
+  searchProducts() {
+    this.applyFilters();
+  }
+
+  filterByCategory(category: string) {
+    this.selectedCategory = category;
+    this.applyFilters();
+  }
+
+  sortProducts(option: string) {
+    this.sortOption = option;
+    this.applyFilters();
+  }
+
+  applyFilters() {
+    const searchTerm = this.searchQuery.toLowerCase(); // Use searchQuery directly
+
+    this.filteredProducts = this.products.filter((product) => {
+      const matchesSearch = product.name.toLowerCase().includes(searchTerm);
+      const matchesCategory = this.selectedCategory === 'All' || product.category === this.selectedCategory;
+      const hasStock = product.stock_quantity > 0;
+
+      return matchesSearch && matchesCategory && hasStock; // Ensure only available products are returned
+    });
+
+    // Sorting logic
+    switch (this.sortOption) {
+      case 'name':
+        this.filteredProducts.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'price_low_high':
+        this.filteredProducts.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
+        break;
+      case 'price_high_low':
+        this.filteredProducts.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
+        break;
+      case 'rating':
+        this.filteredProducts.sort((a, b) => b.average_rating - a.average_rating);
+        break;
+    }
   }
 
   getUserId() {
@@ -153,46 +196,7 @@ export class ProductsPage implements OnInit {
     });
   }
 
-  searchProducts() {
-    this.applyFilters();
-  }
-
-  filterByCategory(category: string) {
-    this.selectedCategory = category;
-    this.applyFilters();
-  }
-
-  sortProducts(option: string) {
-    this.sortOption = option;
-    this.applyFilters();
-  }
-
-  applyFilters() {
-    const searchTerm = this.searchbar?.value?.toLowerCase() || '';
-
-    this.filteredProducts = this.products.filter((product) => {
-      const matchesSearch = product.name.toLowerCase().includes(searchTerm);
-      const matchesCategory = this.selectedCategory === 'All' || product.category === this.selectedCategory;
-      const hasStock = product.stock_quantity > 0;
-
-      return matchesSearch || (hasStock && matchesCategory);
-    });
-
-    switch (this.sortOption) {
-      case 'name':
-        this.filteredProducts.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'price_low_high':
-        this.filteredProducts.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
-        break;
-      case 'price_high_low':
-        this.filteredProducts.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
-        break;
-      case 'rating':
-        this.filteredProducts.sort((a, b) => b.average_rating - a.average_rating);
-        break;
-    }
-  }
+  
 
   increaseQuantity(product: Product) {
     if (product.quantity) {
