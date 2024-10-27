@@ -818,6 +818,7 @@ private handleError<T>(operation = 'operation', result?: T) {
           }
         });
   
+  
         const alert = await this.alertController.create({
           header: 'Order Placed',
           message: `Your order for R${this.total.toFixed(2)} has been placed successfully!`,
