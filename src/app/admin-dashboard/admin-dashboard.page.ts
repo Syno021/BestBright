@@ -5,13 +5,13 @@ import { Chart, ChartConfiguration } from 'chart.js/auto';
 import { AnimationController } from '@ionic/angular';
 import { forkJoin, catchError, of } from 'rxjs';
 import { map } from 'rxjs/operators';
+
 interface Order {
   order_id: number;
   user_id: number;
-  total_amount: string; // Change this to string
+  total_amount: string;
   order_type: string;
   status: string;
-  
 }
 
 interface Sale {

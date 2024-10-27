@@ -6,7 +6,7 @@ import { AlertController,ToastController, AlertOptions } from '@ionic/angular';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectorRef } from '@angular/core';
 import { ModalController } from '@ionic/angular';
-import { catchError, map, Observable, of, Subscription, throwError } from 'rxjs';
+import { catchError, firstValueFrom, forkJoin, map, Observable, of, Subscription, throwError } from 'rxjs';
 import { AngularFireStorage } from '@angular/fire/compat/storage';
 import { AngularFirestore } from '@angular/fire/compat/firestore';
 import jsPDF from 'jspdf';
@@ -26,6 +26,27 @@ declare global {
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => void;
 }
+
+interface Product {
+  id: any;
+  product_id: number;
+  name: string;
+  description: string;
+  price: number;
+  stock_quantity: number;
+  category: string;
+  barcode: string;
+  image_url: string;
+  total_ratings: number;
+  average_rating: number;
+  created_at: string;
+  updated_at: string;
+  quantity?: number;
+  discountedPrice?: number; // Add this property
+  hasPromotion?: boolean; // Add this property
+  promotionName?: string; // Add this property
+}
+
 interface Promotion {
   promotion_id: number;
   name: string;
@@ -58,6 +79,7 @@ export class CartPage implements OnInit {
   tax: number = 0;
   total: number = 0;
   discountedTotal: number = 0;
+  
 
   private cartSubscription: Subscription | undefined;
 
@@ -141,6 +163,8 @@ export class CartPage implements OnInit {
 
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  
   getUserId() {
     this.userId = sessionStorage.getItem('userId');
     if (!this.userId) {
@@ -643,86 +667,112 @@ private handleError<T>(operation = 'operation', result?: T) {
         return;
       }
   
+      // Update stock quantities one by one to ensure proper tracking
+      try {
+        for (const item of this.cartItems) {
+          const stockResponse = await firstValueFrom(
+            this.http.get<{quantity: number}>(
+              `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+            )
+          );
+          
+          const currentStock = stockResponse.quantity;
+          const newQuantity = currentStock - item.quantity;
+  
+          // Use the PUT endpoint to update stock and track quantity
+          await firstValueFrom(
+            this.http.put('http://localhost/user_api/update_stock.php', {
+              product_id: item.product_id,
+              quantity: newQuantity
+            })
+          );
+        }
+      } catch (error) {
+        console.error('Error updating stock quantities:', error);
+        this.showToast('Error updating product quantities. Please try again.');
+        return;
+      }
+  
       // Generate PDF
       const pdf = new jsPDF() as jsPDFWithAutoTable;
-    const pageWidth = pdf.internal.pageSize.width;
-
-    // Set font
-    pdf.setFont("helvetica", "normal");
-
-    // Add header
-    pdf.setFontSize(20);
-    pdf.text("Invoice", pageWidth / 2, 20, { align: "center" });
-
-    // Add order details
-    pdf.setFontSize(12);
-    const orderId = new Date().getTime().toString(); // Generate a unique order ID
-    pdf.text(`Order ID: ${orderId}`, 20, 40);
-
-    // Add customer details
-    const customerName = sessionStorage.getItem('userName') || 'N/A';
-    const customerSurname = sessionStorage.getItem('userSurname') || 'N/A';
-    pdf.text(`Name: ${customerName} ${customerSurname}`, 20, 50);
-    pdf.text(`Email: ${this.userEmail}`, 20, 60);
-
-    // Add delivery address if applicable
-    let yPos = 70;
-    if (this.deliveryMethod === 'delivery' && this.selectedAddress) {
-      pdf.text("Delivery Address:", 20, yPos);
-      yPos += 10;
-      pdf.text(this.selectedAddress.address_line1, 20, yPos);
-      if (this.selectedAddress.address_line2) {
+      const pageWidth = pdf.internal.pageSize.width;
+  
+      // Set font
+      pdf.setFont("helvetica", "normal");
+  
+      // Add header
+      pdf.setFontSize(20);
+      pdf.text("Invoice", pageWidth / 2, 20, { align: "center" });
+  
+      // Add order details
+      pdf.setFontSize(12);
+      const orderId = new Date().getTime().toString();
+      pdf.text(`Order ID: ${orderId}`, 20, 40);
+  
+      // Add customer details
+      const customerName = sessionStorage.getItem('userName') || 'N/A';
+      const customerSurname = sessionStorage.getItem('userSurname') || 'N/A';
+      pdf.text(`Name: ${customerName} ${customerSurname}`, 20, 50);
+      pdf.text(`Email: ${this.userEmail}`, 20, 60);
+  
+      // Add delivery address if applicable
+      let yPos = 70;
+      if (this.deliveryMethod === 'delivery' && this.selectedAddress) {
+        pdf.text("Delivery Address:", 20, yPos);
         yPos += 10;
-        pdf.text(this.selectedAddress.address_line2, 20, yPos);
+        pdf.text(this.selectedAddress.address_line1, 20, yPos);
+        if (this.selectedAddress.address_line2) {
+          yPos += 10;
+          pdf.text(this.selectedAddress.address_line2, 20, yPos);
+        }
+        yPos += 10;
+        pdf.text(`${this.selectedAddress.city}, ${this.selectedAddress.province} ${this.selectedAddress.postal_code}`, 20, yPos);
+        yPos += 10;
+        pdf.text(this.selectedAddress.country, 20, yPos);
+        yPos += 20;
+      } else {
+        yPos += 10;
       }
+  
+      // Add order items table
+      pdf.setFontSize(14);
+      pdf.text("Order Items", 20, yPos);
       yPos += 10;
-      pdf.text(`${this.selectedAddress.city}, ${this.selectedAddress.province} ${this.selectedAddress.postal_code}`, 20, yPos);
+  
+      const columns = ["Item", "Quantity", "Price", "Total"];
+      const data = this.cartItems.map(item => [
+        item.name,
+        item.quantity.toString(),
+        `R${item.price.toFixed(2)}`,
+        `R${(item.price * item.quantity).toFixed(2)}`
+      ]);
+  
+      pdf.autoTable({
+        head: [columns],
+        body: data,
+        startY: yPos,
+        theme: 'striped',
+        headStyles: { fillColor: [66, 66, 66] },
+        margin: { top: 20 },
+      });
+  
+      yPos = (pdf as any).lastAutoTable.finalY + 20;
+  
+      // Add price details
+      pdf.setFontSize(12);
+      pdf.text(`Subtotal: R${this.subtotal.toFixed(2)}`, pageWidth - 70, yPos);
       yPos += 10;
-      pdf.text(this.selectedAddress.country, 20, yPos);
-      yPos += 20;
-    } else {
+      pdf.text(`Discounted Subtotal: R${this.discountedSubtotal.toFixed(2)}`, pageWidth - 70, yPos);
       yPos += 10;
-    }
-
-    // Add order items table
-    pdf.setFontSize(14);
-    pdf.text("Order Items", 20, yPos);
-    yPos += 10;
-
-    const columns = ["Item", "Quantity", "Price", "Total"];
-    const data = this.cartItems.map(item => [
-      item.name,
-      item.quantity.toString(),
-      `R${item.price.toFixed(2)}`,
-      `R${(item.price * item.quantity).toFixed(2)}`
-    ]);
-
-    pdf.autoTable({
-      head: [columns],
-      body: data,
-      startY: yPos,
-      theme: 'striped',
-      headStyles: { fillColor: [66, 66, 66] },
-      margin: { top: 20 },
-    });
-
-    yPos = (pdf as any).lastAutoTable.finalY + 20;
-
-    // Add price details
-    pdf.setFontSize(12);
-    pdf.text(`Subtotal: R${this.subtotal.toFixed(2)}`, pageWidth - 70, yPos);
-    yPos += 10;
-    pdf.text(`Discounted Subtotal: R${this.discountedSubtotal.toFixed(2)}`, pageWidth - 70, yPos);
-    yPos += 10;
-    pdf.text(`Tax (15%): R${this.tax.toFixed(2)}`, pageWidth - 70, yPos);
-    yPos += 10;
-    pdf.setFontSize(14);
-    pdf.text(`Total: R${this.discountedTotal.toFixed(2)}`, pageWidth - 70, yPos);
-
-    console.log('PDF generated');
-
-    // Save PDF to a Blob
-    const pdfBlob = pdf.output('blob');
+      pdf.text(`Tax (15%): R${this.tax.toFixed(2)}`, pageWidth - 70, yPos);
+      yPos += 10;
+      pdf.setFontSize(14);
+      pdf.text(`Total: R${this.discountedTotal.toFixed(2)}`, pageWidth - 70, yPos);
+  
+      console.log('PDF generated');
+  
+      // Save PDF to a Blob
+      const pdfBlob = pdf.output('blob');
   
       // Prepare the order data
       const orderData = {
@@ -748,7 +798,7 @@ private handleError<T>(operation = 'operation', result?: T) {
   
       // Send order data to server
       const response = await this.http.post<{ success: boolean, message: string }>(
-        'http://localhost/user_api/orders.php', 
+        'http://localhost/user_api/orders.php',
         orderData
       ).toPromise();
   
@@ -756,19 +806,17 @@ private handleError<T>(operation = 'operation', result?: T) {
         const firestoreOrderId = new Date().getTime().toString();
         const firestoreOrderData = { ...orderData, firestore_order_id: firestoreOrderId };
         await this.firestore.collection('orders').doc(firestoreOrderId).set(firestoreOrderData);
-
-
+  
         this.cartService.clearAllItems().subscribe({
           next: () => {
             console.log('Cart cleared successfully');
-            // The cart will be automatically updated via the subscription
           },
           error: (error) => {
             console.error('Error clearing cart:', error);
             this.showToast('Failed to clear cart. Please try again.');
           }
         });
-
+  
         const alert = await this.alertController.create({
           header: 'Order Placed',
           message: `Your order for R${this.total.toFixed(2)} has been placed successfully!`,
