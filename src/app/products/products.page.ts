@@ -215,56 +215,34 @@ export class ProductsPage implements OnInit {
   }
 
   async addToCart(product: Product) {
-    if (!this.userId) {
-      const toast = await this.toastController.create({
-        message: 'Please log in to add items to your cart',
-        duration: 2000,
-        position: 'bottom',
-        color: 'warning'
-      });
-      toast.present();
-      return;
-    }
-
     if (!product.quantity || product.quantity < 1) {
       product.quantity = 1;
     }
-  
-    this.cartService.addToCart(product);
-    
-    const payload = {
-      user_id: this.userId,
+
+    // Create cart item from product
+    const cartItem = {
       product_id: product.product_id,
-      quantity: product.quantity
+      name: product.name,
+      price: product.discountedPrice || product.price, // Use discounted price if available
+      quantity: product.quantity,
+      image_url: product.image_url
     };
-  
-    console.log('Sending request to add to cart:', payload);
-  
-    const headers = new HttpHeaders().set('Content-Type', 'application/json');
-  
+
     try {
-      const response: any = await this.http.post('http://localhost/user_api/cart.php', payload, { headers, observe: 'response' }).toPromise();
-      
-      console.log('Full response:', response);
-      console.log('Response status:', response.status);
-      console.log('Response body:', response.body);
-      console.log('Product added to cart successfully');
-  
+      // Use the cart service to add the item
+      await this.cartService.addToCart(cartItem).toPromise();
+
       const toast = await this.toastController.create({
         message: `${product.quantity} ${product.name}(s) added to cart`,
         duration: 2000,
         position: 'bottom',
       });
       toast.present();
-  
+
+      // Reset quantity after adding to cart
       product.quantity = 1;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error adding product to cart:', error);
-      if (error.error instanceof ErrorEvent) {
-        console.error('An error occurred:', error.error.message);
-      } else {
-        console.error(`Backend returned code ${error.status}, body was:`, error.error);
-      }
       
       const errorToast = await this.toastController.create({
         message: 'Error adding product to cart. Please try again.',
@@ -279,4 +257,14 @@ export class ProductsPage implements OnInit {
   navigateToCart() {
     this.navCtrl.navigateForward('/cart');
   }
+
+  // Optional: Add a method to check if a product is in cart
+  async isInCart(productId: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.cartService.getCart().subscribe(items => {
+        resolve(items.some(item => item.product_id === productId));
+      });
+    });
+  }
+
 }

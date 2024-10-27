@@ -11,7 +11,6 @@ import { filter } from 'rxjs/operators';
 })
 export class AppComponent {
   public appPages = [
-    { title: 'Home', url: '/home', icon: 'home' },
     { title: 'Products', url: '/products', icon: 'grid' },
     { title: 'Promotions', url: '/promotions', icon: 'pricetag' },
     { title: 'Account', url: '/account', icon: 'person' },

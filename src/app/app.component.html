@@ -24,9 +24,9 @@
           <ion-menu-button *ngIf="isMobile"></ion-menu-button>
         </ion-buttons>
         <ion-title>{{ currentPageTitle }}</ion-title>
-        <ion-buttons slot="end">
+        <!-- <ion-buttons slot="end">
           <ng-content select="[headerContent]"></ng-content>
-        </ion-buttons>
+        </ion-buttons> -->
       </ion-toolbar>
     </ion-header>
 
@@ -36,6 +36,9 @@
           {{ p.title }}
         </ion-button>
       </ion-buttons>
+      <!-- <ion-button slot="end">
+        <ng-content select="[headerContent]"></ng-content>
+      </ion-button> -->
     </ion-toolbar>
 
     <ion-content>

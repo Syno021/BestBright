@@ -264,31 +264,73 @@ export class CashierPage implements OnInit {
 
   async updateOrderStatus() {
     if (!this.currentOrderDetails || !this.selectedStatus) {
-      console.error('Validation Error:', {
-        currentOrderDetails: this.currentOrderDetails,
-        selectedStatus: this.selectedStatus
-      });
       this.presentToast('Please select a status', 'danger');
       return;
     }
-
+  
+    // Status validation checks
+    const currentStatus = this.currentOrderDetails.status;
+    const newStatus = this.selectedStatus;
+  
+    // Define valid status transitions
+    const validTransitions: { [key: string]: string[] } = {
+      'pending': ['payment-received'],
+      'payment-received': ['order-processed'],
+      'order-processed': ['shipped'],
+      'shipped': ['delivered']
+    };
+  
+    // Check if the transition is valid
+    if (validTransitions[currentStatus] && !validTransitions[currentStatus].includes(newStatus)) {
+      let requiredStatus = '';
+      
+      switch (newStatus) {
+        case 'order-processed':
+          if (currentStatus !== 'payment-received') {
+            requiredStatus = 'payment-received';
+          }
+          break;
+        case 'shipped':
+          if (currentStatus !== 'order-processed') {
+            requiredStatus = 'order-processed';
+          }
+          break;
+        case 'delivered':
+          if (currentStatus !== 'shipped') {
+            requiredStatus = 'shipped';
+          }
+          break;
+      }
+  
+      if (requiredStatus) {
+        this.presentToast(`Order must be in ${requiredStatus} status before moving to ${newStatus}`, 'danger');
+        return;
+      }
+    }
+  
+    // If transitioning to order-processed, check for payment
+    if (newStatus === 'order-processed' && currentStatus !== 'payment-received') {
+      this.presentToast('Awaiting proof of payment. Order must be marked as payment-received first.', 'danger');
+      return;
+    }
+  
     const loader = await this.loadingController.create({
       message: 'Updating order status...',
     });
     await loader.present();
-
+  
     console.log('Attempting to update order:', {
       orderId: this.currentOrderDetails.order_id,
-      currentStatus: this.currentOrderDetails.status,
-      newStatus: this.selectedStatus,
+      currentStatus: currentStatus,
+      newStatus: newStatus,
       timestamp: new Date().toISOString()
     });
-
+  
     const updateData = {
-      status: this.selectedStatus,
-      previousStatus: this.currentOrderDetails.status
+      status: newStatus,
+      previousStatus: currentStatus
     };
-
+  
     this.http.put(`http://localhost/user_api/orders.php?id=${this.currentOrderDetails.order_id}`, updateData)
       .pipe(
         tap(response => {
@@ -307,7 +349,7 @@ export class CashierPage implements OnInit {
             this.fetchOrders();
             
             // Send email to user about order status update
-            await this.sendOrderStatusUpdateEmail(this.currentOrderDetails, this.selectedStatus);
+            await this.sendOrderStatusUpdateEmail(this.currentOrderDetails, newStatus);
             
             this.viewOrderModal.dismiss();
           } else {
