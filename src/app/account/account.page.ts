@@ -63,7 +63,7 @@ export class AccountPage implements OnInit {
     if (!this.userId) {
       this.isLoggedIn = false;
       await this.presentToast('You need to log in to view your account', 'warning');
-      this.router.navigate(['/home']);
+      this.router.navigate(['/signup']);
       return;
     }
     

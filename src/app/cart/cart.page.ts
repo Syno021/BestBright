@@ -8,7 +8,7 @@ import { ChangeDetectorRef } from '@angular/core';
 import { ModalController } from '@ionic/angular';
 import { catchError, firstValueFrom, forkJoin, map, Observable, of, Subscription, throwError } from 'rxjs';
 import { AngularFireStorage } from '@angular/fire/compat/storage';
-import { AngularFirestore } from '@angular/fire/compat/firestore';
+import { AngularFirestore, AngularFirestoreDocument, DocumentReference } from '@angular/fire/compat/firestore';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { UserOptions } from 'jspdf-autotable';
@@ -16,6 +16,7 @@ import { LoadingController} from '@ionic/angular';
 // import { AddressModalComponent } from './address-modal.component';
 import { PaymentgateComponent } from '../paymentgate/paymentgate.component';
 import { environment } from '../../environments/environment';
+
 
 declare global {
   interface Window {
@@ -827,7 +828,8 @@ private handleError<T>(operation = 'operation', result?: T) {
         this.cartItems = [];
         this.calculateTotals();
       } else {
-        throw new Error('Server response indicates failure');
+        console.error('Invalid server response:', response);
+        throw new Error('Server response indicates failure or missing order_id');
       }
     } catch (error) {
       console.error('Error in order placement process:', error);

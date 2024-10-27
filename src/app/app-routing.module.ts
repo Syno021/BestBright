@@ -14,7 +14,7 @@ const routes: Routes = [
   },
   {
     path: '',
-    redirectTo: 'home',
+    redirectTo: 'products',
     pathMatch: 'full'
   },
   {
@@ -113,7 +113,8 @@ const routes: Routes = [
   { path: 'checkout/shipping-method', component: ShippingMethodPage },
   { path: 'checkout/shipping-address', component: ShippingAddressPage },
   { path: 'checkout/payment', component: PaymentPage },
-  { path: 'checkout/order-summary', component: OrderSummaryPage },  {
+  { path: 'checkout/order-summary', component: OrderSummaryPage },
+  {
     path: 'contact',
     loadChildren: () => import('./contact/contact.module').then( m => m.ContactPageModule)
   },
