@@ -1,4 +1,13 @@
 <?php
+
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+// Log errors to a file
+ini_set('log_errors', 1);
+ini_set('error_log', '/path/to/error.log'); 
+
 header("Access-Control-Allow-Origin: http://localhost:8100");
 header("Access-Control-Allow-Methods: POST, GET, PUT, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -115,67 +124,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
     sendJsonResponse(["error" => "Invalid request method"], 405);
 }
 
-elseif ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getProductMovement') {
-    // Get the current date and 30 days ago
-    $currentDate = date('Y-m-d');
-    $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['action']) && $_GET['action'] === 'getProductMovement') {
+    try {
+        // Query to get data from track_product_quantity table
+        $sql = "SELECT tpq.*, p.name, p.category, p.stock_quantity 
+                FROM track_product_quantity tpq
+                JOIN products p ON tpq.product_id = p.product_id
+                ORDER BY tpq.quantity_out DESC";
+        
+        $result = $conn->query($sql);
 
-    // Query to get product movement data
-    $sql = "SELECT p.product_id, p.name, p.category, p.stock_quantity,
-                   tpq.quantity_out,
-                   DATE(tpq.created_at) as sale_date
-            FROM products p
-            LEFT JOIN track_product_quantity tpq ON p.product_id = tpq.product_id
-            WHERE tpq.created_at BETWEEN '$thirtyDaysAgo' AND '$currentDate'
-            ORDER BY p.product_id, tpq.created_at";
+        if ($result === false) {
+            throw new Exception("Query failed: " . $conn->error);
+        }
 
-    $result = $conn->query($sql);
-
-    $productMovement = [];
-    if ($result->num_rows > 0) {
+        $productMovement = [];
         while ($row = $result->fetch_assoc()) {
-            $productId = $row['product_id'];
-            if (!isset($productMovement[$productId])) {
-                $productMovement[$productId] = [
-                    'product_id' => $productId,
-                    'name' => $row['name'],
-                    'category' => $row['category'],
-                    'stock_quantity' => $row['stock_quantity'],
-                    'total_quantity_out' => 0,
-                    'daily_movement' => [],
-                    'weekly_movement' => array_fill(0, 4, 0),
-                    'monthly_movement' => 0
-                ];
-            }
-            
-            $productMovement[$productId]['total_quantity_out'] += $row['quantity_out'];
-            $productMovement[$productId]['daily_movement'][$row['sale_date']] = ($productMovement[$productId]['daily_movement'][$row['sale_date']] ?? 0) + $row['quantity_out'];
-            
-            $weekNumber = floor((strtotime($currentDate) - strtotime($row['sale_date'])) / (7 * 24 * 60 * 60));
-            if ($weekNumber < 4) {
-                $productMovement[$productId]['weekly_movement'][$weekNumber] += $row['quantity_out'];
-            }
+            $productMovement[] = [
+                'product_id' => $row['product_id'],
+                'name' => $row['name'],
+                'category' => $row['category'],
+                'stock_quantity' => $row['stock_quantity'],
+                'quantity_out' => $row['quantity_out'],
+                'created_at' => $row['created_at']
+            ];
         }
 
-        // Calculate monthly movement (total for 30 days)
-        foreach ($productMovement as &$product) {
-            $product['monthly_movement'] = $product['total_quantity_out'];
-        }
+        // Send the response as JSON
+        header('Content-Type: application/json');
+        echo json_encode($productMovement);
+        error_log("Sent response: " . json_encode($productMovement));
+    } catch (Exception $e) {
+        error_log("Error in getProductMovement: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['error' => 'Internal server error: ' . $e->getMessage()]);
     }
-
-    // Sort products by total_quantity_out to determine fast and slow moving
-    usort($productMovement, function($a, $b) {
-        return $b['total_quantity_out'] - $a['total_quantity_out'];
-    });
-
-    // Separate into fast and slow moving (top and bottom 10)
-    $fastMoving = array_slice($productMovement, 0, 10);
-    $slowMoving = array_slice($productMovement, -10);
-
-    sendJsonResponse([
-        'fastMoving' => $fastMoving,
-        'slowMoving' => $slowMoving
-    ]);
+    exit;
 }
+
 $conn->close();
 ?>
