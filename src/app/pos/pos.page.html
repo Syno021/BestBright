@@ -124,7 +124,6 @@
         <hr>
         <p class="total"><strong>Total: {{ receiptData?.total | currency:'R' }}</strong></p>
         
-        <!-- Conditionally display the amount paid and change for cash payments -->
         <ng-container *ngIf="receiptData?.paymentType === 'cash'">
           <p><strong>Amount Paid:</strong> {{ receiptData?.amountPaid | currency:'R' }}</p>
           <p><strong>Change:</strong> {{ receiptData?.change | currency:'R' }}</p>
@@ -137,6 +136,8 @@
       <ion-button expand="block" (click)="hideReceipt()">Close Receipt</ion-button>
     </div>
   </div>
+  <br>
+  <br>
   
 </ion-content>
 

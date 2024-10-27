@@ -10,7 +10,7 @@
     <!-- Sales Summary Cards -->
     <ion-grid>
       <ion-row>
-        <ion-col size="12" size-md="6" size-lg="3">
+        <ion-col size="12" size-md="6" size-lg="4">
           <ion-card>
             <ion-card-header>
               <ion-card-title>Total Sales</ion-card-title>
@@ -20,7 +20,7 @@
             </ion-card-content>
           </ion-card>
         </ion-col>
-        <ion-col size="12" size-md="6" size-lg="3">
+        <ion-col size="12" size-md="6" size-lg="4">
           <ion-card>
             <ion-card-header>
               <ion-card-title>Total Orders</ion-card-title>
@@ -30,23 +30,13 @@
             </ion-card-content>
           </ion-card>
         </ion-col>
-        <ion-col size="12" size-md="6" size-lg="3">
+        <ion-col size="12" size-md="6" size-lg="4">
           <ion-card>
             <ion-card-header>
               <ion-card-title>Average Order Value</ion-card-title>
             </ion-card-header>
             <ion-card-content>
               <h2>R{{ averageOrderValue.toFixed(2) }}</h2>
-            </ion-card-content>
-          </ion-card>
-        </ion-col>
-        <ion-col size="12" size-md="6" size-lg="3">
-          <ion-card>
-            <ion-card-header>
-              <ion-card-title>Top Product</ion-card-title>
-            </ion-card-header>
-            <ion-card-content>
-              <h2>Widget X</h2>
             </ion-card-content>
           </ion-card>
         </ion-col>
@@ -67,7 +57,7 @@
             <ion-col>Amount</ion-col>
             <ion-col>Payment Method</ion-col>
           </ion-row>
-          <ion-row *ngFor="let sale of salesData">
+          <ion-row *ngFor="let sale of paginatedSalesData">
             <ion-col>{{ sale.sale_id }}</ion-col>
             <ion-col>{{ sale.sale_date | date: 'yyyy-MM-dd' }}</ion-col>
             <ion-col>{{ sale.order_id }}</ion-col>
@@ -77,6 +67,23 @@
           </ion-row>
         </ion-grid>
       </ion-card-content>
+      <!-- Pagination Controls -->
+      <ion-footer>
+        <ion-toolbar>
+          <ion-segment [(ngModel)]="itemsPerPage">
+            <ion-segment-button value="10">
+              10
+            </ion-segment-button>
+            <ion-segment-button value="25">
+              25
+            </ion-segment-button>
+          </ion-segment>
+          <ion-buttons slot="end">
+            <ion-button (click)="previousPage()" [disabled]="currentPage === 1">Previous</ion-button>
+            <ion-button (click)="nextPage()" [disabled]="currentPage === totalPages">Next</ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+      </ion-footer>
     </ion-card>
   </ion-content>
 </ion-content>

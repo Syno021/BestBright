@@ -36,6 +36,13 @@ interface Promotion {
   product_names: string[];
 }
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
 
 @Component({
   selector: 'app-pos',
@@ -58,6 +65,7 @@ export class POSPage implements OnInit {
   receiptData: any = null;
   cartItems: any[] = [];
   userId: string | null = null;
+  currentUser: User | null = null;
   promotions: any[] = [];
 
 
@@ -77,6 +85,24 @@ export class POSPage implements OnInit {
   getUserId() {
     this.userId = sessionStorage.getItem('userId');
     if (!this.userId) {
+      console.warn('User is not logged in');
+      // You might want to redirect to login page or show a message
+    }
+  }
+
+  getUserInfo() {
+    this.userId = sessionStorage.getItem('userId');
+    if (this.userId) {
+      this.http.get<User>(`http://localhost/user_api/register.php?id=${this.userId}`).subscribe({
+        next: (user: User) => {
+          this.currentUser = user;
+          console.log('Current user:', this.currentUser);
+        },
+        error: (error: HttpErrorResponse) => {
+          console.error('Error loading user info:', error);
+        }
+      });
+    } else {
       console.warn('User is not logged in');
       // You might want to redirect to login page or show a message
     }
@@ -513,8 +539,8 @@ private async presentToast(message: string, color: 'success' | 'danger') {
     
     this.receiptData = {
       date: new Date().toLocaleString(),
-      cashier: 'John Doe',
-      cashierId: '12345',
+      cashier: this.currentUser ? this.currentUser.name : 'Unknown',
+      cashierId: this.currentUser ? this.currentUser.id : 'Unknown',
       items: [...this.cart],
       subtotal: this.getSubtotal(),
       tax: this.getTax(),

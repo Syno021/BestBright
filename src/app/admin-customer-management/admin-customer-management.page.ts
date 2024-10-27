@@ -24,6 +24,9 @@ export class AdminCustomerManagementPage implements OnInit {
 
   filteredUsers: any[] = [];
 
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
+
   constructor(
     private http: HttpClient,
     private toastController: ToastController,
@@ -32,6 +35,27 @@ export class AdminCustomerManagementPage implements OnInit {
 
   ngOnInit() {
     this.loadCustomers();
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredUsers.length / this.itemsPerPage);
+  }
+
+  get paginatedUsers(): any[] {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    return this.filteredUsers.slice(start, start + this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+    }
   }
 
   loadCustomers() {

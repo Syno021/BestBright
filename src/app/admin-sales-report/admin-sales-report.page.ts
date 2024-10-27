@@ -11,11 +11,34 @@ export class AdminSalesReportPage implements OnInit {
   totalSalesAmount: number = 0;
   totalOrders: number = 0;
   averageOrderValue: number = 0;
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
 
   constructor(private http: HttpClient) {}
 
   ngOnInit() {
     this.fetchSalesData();
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.salesData.length / this.itemsPerPage);
+  }
+
+  get paginatedSalesData(): any[] {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    return this.salesData.slice(start, start + this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+    }
   }
 
   fetchSalesData() {

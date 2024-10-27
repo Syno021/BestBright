@@ -21,10 +21,12 @@ import { CategoryManagementComponent } from './category-management/category-mana
 import { PromotionManagementComponent } from './promotion-management/promotion-management.component';
 import { PaymentgateComponent } from './paymentgate/paymentgate.component';
 import { StockRequestComponent } from './stock-request/stock-request.component';
+import { FileUploadComponent } from './file-upload/file-upload.component';
 
 @NgModule({
   
-  declarations: [AppComponent, NavbarComponent, CategoryManagementComponent, PromotionManagementComponent, PaymentgateComponent, StockRequestComponent],
+  declarations: [AppComponent, NavbarComponent, CategoryManagementComponent, PromotionManagementComponent,
+     PaymentgateComponent, StockRequestComponent, FileUploadComponent],
   imports: [
     BrowserModule,
     FormsModule,

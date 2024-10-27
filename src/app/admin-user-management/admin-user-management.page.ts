@@ -36,8 +36,12 @@ export class AdminUserManagementPage implements OnInit {
   searchQuery: string = '';
   selectedFilter: string = 'admin';
 
-  users: any[] = [];
   filteredUsers: any[] = [];
+  paginatedUsers: any[] = [];
+  itemsPerPage: number = 10;
+  currentPage: number = 1;
+
+  users: any[] = [];
 
   constructor(
     private http: HttpClient,
@@ -193,6 +197,31 @@ export class AdminUserManagementPage implements OnInit {
 
       return matchesSearch && matchesRole;
     });
+    this.currentPage = 1; // Reset to first page on filter change
+    this.updatePaginatedUsers();
+  }
+
+  updatePaginatedUsers() {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    this.paginatedUsers = this.filteredUsers.slice(start, start + this.itemsPerPage);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.filteredUsers.length / this.itemsPerPage);
+  }
+
+  nextPage() {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+      this.updatePaginatedUsers();
+    }
+  }
+
+  previousPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.updatePaginatedUsers();
+    }
   }
 
   // Method to delete a user

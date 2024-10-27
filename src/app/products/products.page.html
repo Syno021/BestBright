@@ -9,35 +9,39 @@
   </ion-buttons>
 </ng-container>
   <ion-toolbar>
-    <ion-searchbar placeholder="Search Product" (ionChange)="searchProducts()"></ion-searchbar>
+    <ion-searchbar placeholder="Search Product" [(ngModel)]="searchQuery" 
+    (ionInput)="searchProducts()"></ion-searchbar>
   </ion-toolbar>
 
 
 <ion-content [fullscreen]="true" class="ion-padding">
   <ion-grid>
-    <ion-row>
-      <ion-col size="12" size-md="3">
-        <ion-item>
-          <ion-label>Category</ion-label>
-          <ion-select [(ngModel)]="selectedCategory" (ionChange)="filterByCategory(selectedCategory)">
-            <ion-select-option *ngFor="let category of categories" [value]="category">{{ category }}</ion-select-option>
-          </ion-select>
-        </ion-item>
-      </ion-col>
-
-      <ion-col size="12" size-md="3">
-        <ion-item>
-          <ion-label>Sort By</ion-label>
-          <ion-select [(ngModel)]="sortOption" (ionChange)="sortProducts(sortOption)">
-            <ion-select-option value="name">Name</ion-select-option>
-            <ion-select-option value="price_low_high">Price: Low to High</ion-select-option>
-            <ion-select-option value="price_high_low">Price: High to Low</ion-select-option>
-            <ion-select-option value="rating">Rating</ion-select-option>
-          </ion-select>
-        </ion-item>
-      </ion-col>
-    </ion-row>
-
+      <ion-row>
+        <ion-col size="12" size-md="3">
+          <ion-item>
+            <ion-label>Category</ion-label>
+            <ion-select 
+              [(ngModel)]="selectedCategory" 
+              (ionChange)="filterByCategory(selectedCategory)">
+              <ion-select-option *ngFor="let category of categories" [value]="category">{{ category }}</ion-select-option>
+            </ion-select>
+          </ion-item>
+        </ion-col>
+  
+        <ion-col size="12" size-md="3">
+          <ion-item>
+            <ion-label>Sort By</ion-label>
+            <ion-select 
+              [(ngModel)]="sortOption" 
+              (ionChange)="sortProducts(sortOption)">
+              <ion-select-option value="name">Name</ion-select-option>
+              <ion-select-option value="price_low_high">Price: Low to High</ion-select-option>
+              <ion-select-option value="price_high_low">Price: High to Low</ion-select-option>
+              <ion-select-option value="rating">Rating</ion-select-option>
+            </ion-select>
+          </ion-item>
+        </ion-col>
+      </ion-row>
     <ion-row>
       <ion-col size="6" size-sm="4" size-md="3" size-lg="2" *ngFor="let product of filteredProducts">
         <div class="product-grid">

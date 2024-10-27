@@ -128,7 +128,7 @@
     </ion-item-divider>
     <ion-item>
       <ion-label>Subtotal</ion-label>
-      <ion-note slot="end">R{{ subtotal }}</ion-note>
+      <ion-note slot="end">R{{ discountedSubtotal }}</ion-note>
     </ion-item>
     <ion-item>
       <ion-label>Tax</ion-label>
@@ -136,10 +136,11 @@
     </ion-item>
     <ion-item>
       <ion-label>Total</ion-label>
-      <ion-note slot="end"><strong>R{{ total}}</strong></ion-note>
+      <ion-note slot="end"><strong>R{{ discountedTotal}}</strong></ion-note>
     </ion-item>
 
     <ion-button expand="block" (click)="PlaceOrder()">Place Order</ion-button>
     <ion-button expand="block" (click)="openPaymentModal()">Pay Now</ion-button>
+    <!-- <ion-button expand="block" (click)="makePayment()">Pay Now</ion-button> -->
   </div>
 </ion-content>
