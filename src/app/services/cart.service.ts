@@ -49,39 +49,6 @@ export class CartService {
     this.cartItemsSubject.next(this.cartItems);
   }
 
-  private loadCartFromServer() {
-    const userId = this.getUserId();
-    if (!userId) return;
-
-    const params = new HttpParams().set('user_id', userId);
-
-    this.http.get<any>(this.apiUrl, { params }).pipe(
-      map(response => {
-        if (response && response.data && Array.isArray(response.data)) {
-          return response.data.map((item: any) => ({
-            product_id: parseInt(item.product_id, 10),
-            name: item.name || 'Unknown Product',
-            price: parseFloat(item.price || '0'),
-            quantity: parseInt(item.quantity, 10),
-            image_url: item.image_url || ''
-          }));
-        }
-        return [];
-      }),
-      catchError(this.handleError)
-    ).subscribe({
-      next: (items: CartItem[]) => {
-        this.cartItems = items;
-        this.cartItemsSubject.next(this.cartItems);
-      },
-      error: (error) => {
-        console.error('Error loading cart from server:', error);
-        this.loadCartFromStorage();
-      }
-    });
-  }
-
-  // Method to sync local cart with server upon login
   syncLocalCartWithServer(userId: string): Observable<any> {
     const localCart = localStorage.getItem('cart');
     if (!localCart) {
@@ -108,19 +75,55 @@ export class CartService {
       );
     });
 
-    // After syncing, clear local storage
+    // Instead of clearing localStorage immediately, wait until after server sync
     return new Observable(subscriber => {
       Promise.all(syncRequests.map(req => req.toPromise()))
         .then(() => {
-          localStorage.removeItem('cart');
-          this.loadCartFromServer();
-          subscriber.next(true);
-          subscriber.complete();
+          // Keep the local cart until we verify server sync
+          this.loadCartFromServer().subscribe({
+            next: (serverCart) => {
+              if (serverCart && serverCart.length > 0) {
+                // Only remove local cart after successful server load
+                localStorage.removeItem('cart');
+              }
+              subscriber.next(true);
+              subscriber.complete();
+            },
+            error: (error) => {
+              subscriber.error(error);
+            }
+          });
         })
         .catch(error => {
           subscriber.error(error);
         });
     });
+  }
+
+  // Add this new method to load cart and return as Observable
+  private loadCartFromServer(): Observable<CartItem[]> {
+    const userId = this.getUserId();
+    if (!userId) return of([]);
+
+    const params = new HttpParams().set('user_id', userId);
+    return this.http.get(this.apiUrl, { params }).pipe(
+      map((response: any) => {
+        if (response && response.data && Array.isArray(response.data)) {
+          return response.data.map((item: any) => ({
+            product_id: parseInt(item.product_id, 10),
+            name: item.name || 'Unknown Product',
+            price: parseFloat(item.price || '0'),
+            quantity: parseInt(item.quantity, 10),
+            image_url: item.image_url || ''
+          }));
+        }
+        return [];
+      }),
+      catchError(error => {
+        console.error('Error loading cart from server:', error);
+        return of([]);
+      })
+    );
   }
 
   addToCart(product: CartItem): Observable<any> {

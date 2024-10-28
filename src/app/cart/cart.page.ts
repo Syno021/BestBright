@@ -106,6 +106,12 @@ export class CartPage implements OnInit {
     this.loadPaystackScript();
   }
 
+  switchMainImage(item: any, newImage: string) {
+    const currentMain = item.image_url;
+    item.image_url = newImage;
+    // Update the thumbnails array accordingly
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 

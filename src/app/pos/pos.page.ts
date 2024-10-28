@@ -358,8 +358,23 @@ addToCart(product: Product) {
 
 
 async removeFromCart(item: Product) {
+  const cartItem = this.cart.find(cartProd => cartProd.barcode === item.barcode);
+
+  if (!cartItem) {
+    return;
+  }
+
+  // If quantity is greater than 1, just decrease the quantity
+  if (cartItem.quantity! > 1) {
+    cartItem.quantity!--;
+    await this.presentToast('Item quantity decreased', 'success');
+    return;
+  }
+
+  // If quantity is 1 (meaning item will be removed completely), require admin verification
   const alert = await this.alertController.create({
     header: 'Admin Verification',
+    message: 'Complete item removal requires admin verification',
     inputs: [
       {
         name: 'email',
@@ -396,7 +411,7 @@ private verifyAdminAndRemove(email: string, password: string, item: Product) {
     .subscribe(
       async (response: any) => {
         if (response.status === 1 && response.role === 'admin') {
-          this.performRemoveFromCart(item);
+          this.performCompleteRemoval(item);
           await this.presentToast('Item removed from cart', 'success');
         } else {
           await this.presentToast('You do not have privileges to delete. Admin authentication failed.', 'danger');
@@ -409,14 +424,8 @@ private verifyAdminAndRemove(email: string, password: string, item: Product) {
     );
 }
 
-private performRemoveFromCart(item: Product) {
-  const cartItem = this.cart.find(cartProd => cartProd.barcode === item.barcode);
-
-  if (cartItem && cartItem.quantity! > 1) {
-    cartItem.quantity!--;
-  } else {
-    this.cart = this.cart.filter(cartProd => cartProd.barcode !== item.barcode);
-  }
+private performCompleteRemoval(item: Product) {
+  this.cart = this.cart.filter(cartProd => cartProd.barcode !== item.barcode);
 }
 
 private async presentToast(message: string, color: 'success' | 'danger') {
@@ -427,7 +436,6 @@ private async presentToast(message: string, color: 'success' | 'danger') {
   });
   toast.present();
 }
-
   getSubtotal() {
     return this.roundToTwo(
       this.cart.reduce((sum, item) => sum + (item.discountedPrice! * item.quantity!), 0)
@@ -521,8 +529,6 @@ private async presentToast(message: string, color: 'success' | 'danger') {
     await alert.present();
   }
 
-  
-  
   completeTransaction() {
     this.prepareReceiptData();
     this.isCheckoutComplete = true;
@@ -551,12 +557,10 @@ private async presentToast(message: string, color: 'success' | 'danger') {
     };
   }
   
-
   // hideReceipt() {
   //   this.receiptVisible = false;
   //   this.receiptData = null;
   // }
-
 
   onBarcodeEnter() {
     const product = this.allProducts.find(p => p.barcode === this.barcodeInput);
@@ -612,7 +616,6 @@ private async presentToast(message: string, color: 'success' | 'danger') {
     }
   }
   
-
   private async showAlert(header: string, message: string) {
     const alert = await this.alertController.create({
       header,
