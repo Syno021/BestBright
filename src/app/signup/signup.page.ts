@@ -2,7 +2,6 @@ import { Component, OnInit } from '@angular/core';
 import { AlertController, ToastController } from '@ionic/angular';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router'; // Import Router
-import { CartService } from '../services/cart.service';
 
 @Component({
   selector: 'app-signup',
@@ -36,8 +35,7 @@ export class SignupPage implements OnInit {
     private http: HttpClient,
     private alertController: AlertController,
     private toastController: ToastController,
-    private router: Router, // Inject Router
-    private cartService: CartService
+    private router: Router // Inject Router
   ) {}
 
 
@@ -67,75 +65,63 @@ export class SignupPage implements OnInit {
 
       const registerData = {
         ...this.userData,
-        role: 'customer'
+        role: 'customer' // Automatically set the role to customer
       };
 
+      // Send POST request to PHP API for registration
       this.http.post('http://localhost/user_api/register.php', registerData)
-        .subscribe({
-          next: async (response: any) => {
-            console.log('Registration response:', response);
-            if (response.status === 1) {
-              await this.presentToast('Registration successful', 'success');
-              this.clearFields();
-            } else {
-              await this.presentToast('Registration failed: ' + response.message, 'danger');
-            }
-          },
-          error: async (error: HttpErrorResponse) => {
-            console.error('Error during registration:', error);
-            await this.presentToast('Error during registration: ' + error.message, 'danger');
-          }
-        });
+  .subscribe(
+    async (response: any) => {
+      console.log('Registration response:', response);
+      if (response.status === 1) {
+        await this.presentToast('Registration successful', 'success');
+        this.clearFields();
+      } else {
+        await this.presentToast('Registration failed: ' + response.message, 'danger');
+      }
+    },
+    async (error: HttpErrorResponse) => {
+      console.error('Error during registration:', error);
+      await this.presentToast('Error during registration: ' + error.message, 'danger');
+    }
+  );
     } else {
-      // Login logic
+      // Send POST request to PHP API for login
       this.http.post('http://localhost/user_api/login.php', this.loginData)
-        .subscribe({
-          next: async (response: any) => {
+        .subscribe(
+          async (response: any) => {
             if (response.status === 1) {
+              await this.presentToast('Login successful', 'success');
+
               // Store user info in session storage
               sessionStorage.setItem('userEmail', response.email);
               sessionStorage.setItem('userRole', response.role);
               sessionStorage.setItem('userId', response.user_id);
               sessionStorage.setItem('username', response.username);
 
-              // Sync local cart with server
-              try {
-                await this.cartService.syncLocalCartWithServer(response.user_id).toPromise();
-                console.log('Local cart synced with server');
-              } catch (syncError) {
-                console.error('Error syncing cart:', syncError);
-                // Continue with login process even if sync fails
-              }
+              // Log user details to the console
+              console.log("User logged in:");
+              console.log("Email: " + response.email);
+              console.log("User ID: " + response.user_id);
+              console.log("Username: " + response.username);
 
-              await this.presentToast('Login successful', 'success');
-
-              // Log user details
-              console.log("User logged in:", {
-                email: response.email,
-                userId: response.user_id,
-                username: response.username
-              });
-
-              // Navigate based on role
-              switch (response.role) {
-                case 'admin':
-                  this.router.navigate(['/admin-dashboard']);
-                  break;
-                case 'cashier':
-                  this.router.navigate(['/pos']);
-                  break;
-                default:
-                  this.router.navigate(['/home']);
+              // Navigate based on the role
+              if (response.role === 'admin') {
+                this.router.navigate(['/admin-dashboard']); // Navigate to admin dashboard
+              } else if (response.role === 'cashier') {
+                this.router.navigate(['/pos']); // Navigate to POS page
+              } else {
+                this.router.navigate(['/home']); // Navigate to home page for all other roles
               }
             } else {
               await this.presentToast('Login failed: ' + response.message, 'danger');
             }
           },
-          error: async (error: HttpErrorResponse) => {
+          async (error: HttpErrorResponse) => {
             console.error('Error during login:', error);
             await this.presentToast('Error during login: ' + error.message, 'danger');
           }
-        });
+        );
     }
   }
   

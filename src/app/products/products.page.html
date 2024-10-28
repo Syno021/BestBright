@@ -1,84 +1,104 @@
-<ng-container slot="end" headerContent>
-  <ion-buttons>
-    <ion-button slot="end" (click)="navigateToCart()">
-      <ion-icon name="cart-outline"></ion-icon>
-    </ion-button>
-    <ion-button (click)="viewAccount()">
-      <ion-icon name="person-outline"></ion-icon>
-    </ion-button>
-  </ion-buttons>
-</ng-container>
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="end">
+      <ion-button (click)="navigateToCart()">
+        <ion-icon name="cart-outline"></ion-icon>
+      </ion-button>
+      <ion-button (click)="viewAccount()">
+        <ion-icon name="person-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  
   <ion-toolbar>
     <ion-searchbar placeholder="Search Product" [(ngModel)]="searchQuery" 
-    (ionInput)="searchProducts()"></ion-searchbar>
+      (ionInput)="searchProducts()">
+    </ion-searchbar>
   </ion-toolbar>
+</ion-header>
 
+<ion-content [fullscreen]="true">
+  <div class="main-container">
+    <!-- Categories -->
+    <div class="category-section">
+      <div class="scrolling-categories">
+        <button *ngFor="let category of categories" 
+          [class.active]="selectedCategory === category"
+          (click)="filterByCategory(category)"
+          class="category-btn">
+          {{ category }}
+        </button>
+      </div>
+    </div>
 
-<ion-content [fullscreen]="true" class="ion-padding">
-  <ion-grid>
-      <ion-row>
-        <ion-col size="12" size-md="3">
-          <ion-item>
-            <ion-label>Category</ion-label>
-            <ion-select 
-              [(ngModel)]="selectedCategory" 
-              (ionChange)="filterByCategory(selectedCategory)">
-              <ion-select-option *ngFor="let category of categories" [value]="category">{{ category }}</ion-select-option>
-            </ion-select>
-          </ion-item>
-        </ion-col>
-  
-        <ion-col size="12" size-md="3">
-          <ion-item>
-            <ion-label>Sort By</ion-label>
-            <ion-select 
-              [(ngModel)]="sortOption" 
-              (ionChange)="sortProducts(sortOption)">
-              <ion-select-option value="name">Name</ion-select-option>
-              <ion-select-option value="price_low_high">Price: Low to High</ion-select-option>
-              <ion-select-option value="price_high_low">Price: High to Low</ion-select-option>
-              <ion-select-option value="rating">Rating</ion-select-option>
-            </ion-select>
-          </ion-item>
-        </ion-col>
-      </ion-row>
-    <ion-row>
-      <ion-col size="6" size-sm="4" size-md="3" size-lg="2" *ngFor="let product of filteredProducts">
-        <div class="product-grid">
-          <div class="product-item">
-            <div class="product-image">
-              <img [src]="product.image_url || product.image" [alt]="product.name" />
-              <div class="badge-container">
-                <span class="badge sale" *ngIf="product.isSale">SALE</span>
-                <span class="badge promotion" *ngIf="product.hasPromotion">{{ product.promotionName }}</span>
-              </div>
-            </div>
-            <div class="product-details">
-              <p class="product-name">{{ product.name }}</p>
-              <p class="product-description">{{ product.description }}</p>
-              <div class="price-container">
-                <span class="price" [class.strikethrough]="product.hasPromotion">
-                  R{{ product.price | number:'1.2-2' }}
-                </span>
-                <span *ngIf="product.hasPromotion" class="discounted-price">
-                  R{{ product.discountedPrice | number:'1.2-2' }}
-                </span>
-              </div>
-              <div *ngIf="product.stock_quantity > 0; else outOfStock">
-                <div class="quantity-controls">
-                  <button (click)="decreaseQuantity(product)">-</button>
-                  <span>{{ product.quantity }}</span>
-                  <button (click)="increaseQuantity(product)">+</button>
-                </div>
-                <button class="add-to-cart" (click)="addToCart(product)">Add to Cart</button>
-              </div>
-              <ng-template #outOfStock>
-                <p class="out-of-stock">Out of Stock</p>
-              </ng-template>
-            </div>
+    <!-- Sort Options -->
+    <div class="sort-section">
+      <div class="sort-options">
+        <button class="sort-btn" 
+          [class.active]="sortOption === 'name'"
+          (click)="sortProducts('name')">
+          Name
+        </button>
+        <button class="sort-btn" 
+          [class.active]="sortOption === 'price_low_high'"
+          (click)="sortProducts('price_low_high')">
+          Price: Low to High
+        </button>
+        <button class="sort-btn" 
+          [class.active]="sortOption === 'price_high_low'"
+          (click)="sortProducts('price_high_low')">
+          Price: High to Low
+        </button>
+        <button class="sort-btn" 
+          [class.active]="sortOption === 'rating'"
+          (click)="sortProducts('rating')">
+          Rating
+        </button>
+      </div>
+    </div>
+
+    <!-- Product Grid -->
+    <div class="product-grid">
+      <div class="product-card" *ngFor="let product of filteredProducts">
+        <div class="product-image-container">
+          <img [src]="product.image_url || product.image" [alt]="product.name">
+          <div class="badges">
+            <span class="badge sale-badge" *ngIf="product.isSale">SALE</span>
+            <span class="badge promo-badge" *ngIf="product.hasPromotion">
+              {{ product.promotionName }}
+            </span>
           </div>
         </div>
-      </ion-col>
-    </ion-row>
-  </ion-grid>
+
+        <div class="product-info">
+          <h3 class="product-name">{{ product.name }}</h3>
+          <p class="product-description">{{ product.description }}</p>
+          
+          <div class="price-info">
+            <span class="price" [class.strikethrough]="product.hasPromotion">
+              R{{ product.price | number:'1.2-2' }}
+            </span>
+            <span class="discounted-price" *ngIf="product.hasPromotion">
+              R{{ product.discountedPrice | number:'1.2-2' }}
+            </span>
+          </div>
+
+          <div class="product-actions" *ngIf="product.stock_quantity > 0; else outOfStock">
+            <div class="quantity-controls">
+              <button (click)="decreaseQuantity(product)">-</button>
+              <span>{{ product.quantity }}</span>
+              <button (click)="increaseQuantity(product)">+</button>
+            </div>
+            <button class="add-to-cart-btn" (click)="addToCart(product)">
+              Add to Cart
+            </button>
+          </div>
+
+          <ng-template #outOfStock>
+            <p class="out-of-stock">Out of Stock</p>
+          </ng-template>
+        </div>
+      </div>
+    </div>
+  </div>
 </ion-content>

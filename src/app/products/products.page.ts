@@ -82,17 +82,20 @@ export class ProductsPage implements OnInit {
   }
 
   applyFilters() {
-    const searchTerm = this.searchQuery.toLowerCase(); // Use searchQuery directly
-
+    const searchTerm = this.searchQuery.toLowerCase();
+    const selectedCategoryLower = this.selectedCategory.toLowerCase();
+  
     this.filteredProducts = this.products.filter((product) => {
       const matchesSearch = product.name.toLowerCase().includes(searchTerm);
-      const matchesCategory = this.selectedCategory === 'All' || product.category === this.selectedCategory;
+      const matchesCategory = 
+        this.selectedCategory === 'All' || 
+        product.category.toLowerCase() === selectedCategoryLower;
       const hasStock = product.stock_quantity > 0;
-
-      return matchesSearch && matchesCategory && hasStock; // Ensure only available products are returned
+  
+      return matchesSearch && matchesCategory && hasStock;
     });
-
-    // Sorting logic
+  
+    // Sorting logic remains the same
     switch (this.sortOption) {
       case 'name':
         this.filteredProducts.sort((a, b) => a.name.localeCompare(b.name));
@@ -172,7 +175,21 @@ export class ProductsPage implements OnInit {
   }
 
   extractCategories() {
-    this.categories = ['All', ...new Set(this.products.map(product => product.category))];
+    // Create a map to store normalized categories
+    const categoryMap = new Map<string, string>();
+    
+    // Get all categories and normalize them
+    this.products.forEach(product => {
+      const normalizedCategory = product.category.toLowerCase().trim();
+      // If this normalized category isn't in our map, add it
+      // We store the first occurrence's original case as the display version
+      if (!categoryMap.has(normalizedCategory)) {
+        categoryMap.set(normalizedCategory, product.category);
+      }
+    });
+  
+    // Convert map values to array and add 'All' at the beginning
+    this.categories = ['All', ...Array.from(categoryMap.values())];
   }
 
   rateProduct(product: Product, rating: number) {

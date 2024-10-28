@@ -194,6 +194,7 @@ export class CartPage implements OnInit {
     }
   }
 
+  
   loadCart() {
     this.cartSubscription = this.cartService.getCart().subscribe({
       next: (items) => {
@@ -202,15 +203,12 @@ export class CartPage implements OnInit {
           price: this.ensureValidNumber(item.price),
           quantity: this.ensureValidNumber(item.quantity)
         }));
+        console.log('Cart items before promotions:', this.cartItems); // Debug log
         this.applyPromotions();
-        console.log('Cart items:', this.cartItems);
-        if (this.cartItems.length === 0) {
-          this.showToast('Your cart is empty');
-        }
       },
       error: (error) => {
         console.error('Error loading cart:', error);
-        this.showToast('User Not logged in');
+        this.showToast('Error loading cart items');
       }
     });
   }
@@ -225,34 +223,53 @@ export class CartPage implements OnInit {
   loadPromotions() {
     this.promotionService.getPromotions().subscribe({
       next: (promotions: Promotion[]) => {
+        console.log('Loaded promotions:', promotions); // Debug log
         this.promotions = promotions;
-        this.applyPromotions();
+        this.loadCart(); // Reload cart after promotions are loaded
       },
       error: (error) => {
         console.error('Error loading promotions:', error);
+        this.showToast('Error loading promotions');
       }
     });
   }
 
   applyPromotions() {
+    if (!this.promotions || !this.cartItems) {
+      console.warn('Promotions or cart items not loaded yet');
+      return;
+    }
+
     this.cartItems.forEach(item => {
-      const applicablePromotion = this.promotions.find(promo => 
-        promo.product_ids.includes(item.product_id) &&
-        new Date(promo.start_date) <= new Date() &&
-        new Date(promo.end_date) >= new Date()
-      );
+      console.log(`Checking promotions for product ${item.product_id}`); // Debug log
+      
+      const applicablePromotion = this.promotions.find(promo => {
+        const isProductIncluded = promo.product_ids.includes(item.product_id);
+        const currentDate = new Date();
+        const startDate = new Date(promo.start_date);
+        const endDate = new Date(promo.end_date);
+        const isDateValid = currentDate >= startDate && currentDate <= endDate;
+        
+        console.log(`Promotion ${promo.name}: Product included: ${isProductIncluded}, Date valid: ${isDateValid}`);
+        
+        return isProductIncluded && isDateValid;
+      });
 
       if (applicablePromotion) {
+        console.log(`Applying promotion ${applicablePromotion.name} to ${item.name}`);
         const discountAmount = item.price * (applicablePromotion.discount_percentage / 100);
         item.discountedPrice = this.roundToTwo(item.price - discountAmount);
         item.hasPromotion = true;
         item.promotionName = applicablePromotion.name;
       } else {
+        console.log(`No applicable promotion found for ${item.name}`);
         item.discountedPrice = item.price;
         item.hasPromotion = false;
         item.promotionName = '';
       }
     });
+
+    console.log('Cart items after promotions:', this.cartItems); // Debug log
     this.calculateTotals();
   }
 
@@ -261,10 +278,12 @@ export class CartPage implements OnInit {
     this.subtotal = this.roundToTwo(
       this.cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0)
     );
+    
     this.discountedSubtotal = this.roundToTwo(
       this.cartItems.reduce((sum, item) => sum + (item.discountedPrice * item.quantity), 0)
     );
-    this.tax = this.roundToTwo(this.discountedSubtotal * 0.15); // Assuming 15% tax rate
+    
+    this.tax = this.roundToTwo(this.discountedSubtotal * 0.15); // 15% tax
     this.total = this.roundToTwo(this.subtotal + this.tax);
     this.discountedTotal = this.roundToTwo(this.discountedSubtotal + this.tax);
   }
