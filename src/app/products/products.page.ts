@@ -76,8 +76,8 @@ export class ProductsPage implements OnInit {
     const cartItem = {
       product_id: product.product_id,
       name: product.name,
-      price: product.price, // This is the original price
-      originalPrice: product.price, // Always store the original price
+      price: product.price, // Keep the original price as is
+      originalPrice: product.price,
       discountedPrice: product.hasPromotion ? product.discountedPrice : product.price,
       quantity: product.quantity,
       image_url: product.image_url,

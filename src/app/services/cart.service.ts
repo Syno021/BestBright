@@ -109,7 +109,6 @@ export class CartService {
 
   addToCart(product: CartItem): Observable<any> {
     const userId = this.getUserId();
-  
     const cartItem: CartItem = {
       ...product,
       originalPrice: product.price,
@@ -117,7 +116,7 @@ export class CartService {
       hasPromotion: product.hasPromotion || false,
       promotionName: product.promotionName || '',
       discountPercentage: product.discountPercentage || 0,
-      price: product.discountedPrice || product.price
+      price: product.price  // Changed: Now using original price instead of discounted price
     };
   
     if (userId) {
