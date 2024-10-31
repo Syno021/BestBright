@@ -35,7 +35,11 @@
             </button>
           </div>
           
-          <button class="remove-btn" (click)="removeItem(item.product_id)">Remove</button>
+          <ion-button fill="clear" class="remove-btn" 
+                       (click)="removeItem(item.product_id)">
+              <ion-icon name="trash-outline" slot="start"></ion-icon>
+              Remove
+            </ion-button>
         </div>
       </div>
     </div>

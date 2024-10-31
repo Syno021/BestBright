@@ -98,14 +98,151 @@ export class CartPage implements OnInit {
   ) {}
 
   ngOnInit() {
-    this.loadCart();
     this.loadPromotions();
+
+    this.loadCart();
     this.getUserId();
     this.getUserEmail();
     this.loadSavedAddresses();
     this.loadPaystackScript();
   }
 
+  ngOnDestroy() {
+    if (this.cartSubscription) {
+      this.cartSubscription.unsubscribe();
+    }
+  }
+
+  hasAnyPromotion() {
+    return this.cartItems.some(item => item.hasPromotion);
+  }
+  
+  loadCart() {
+    this.cartSubscription = this.cartService.getCart().subscribe({
+      next: (items) => {
+        this.cartItems = items.map(item => ({
+          ...item,
+          price: this.ensureValidNumber(item.price),
+          quantity: this.ensureValidNumber(item.quantity),
+          originalPrice: this.ensureValidNumber(item.originalPrice || item.price),
+          discountedPrice: this.ensureValidNumber(item.discountedPrice || item.price),
+          hasPromotion: Boolean(item.hasPromotion),
+          promotionName: item.promotionName || '',
+          discountPercentage: this.ensureValidNumber(item.discountPercentage || 0)
+        }));
+        console.log('Cart items loaded:', this.cartItems); // Debug log
+        if (this.promotions.length > 0) {
+          this.applyPromotions();
+        }
+      },
+      error: (error) => {
+        console.error('Error loading cart:', error);
+        this.showToast('Error loading cart items');
+      }
+    });
+  }
+
+  async openPaymentModal() {
+    const modal = await this.modalController.create({
+      component: PaymentgateComponent
+    });
+    return await modal.present();
+  }
+
+  loadPromotions() {
+    this.promotionService.getPromotions().subscribe({
+      next: (promotions: any[]) => {
+        // Ensure proper data formatting
+        this.promotions = promotions.map(promo => ({
+          ...promo,
+          discount_percentage: parseFloat(promo.discount_percentage),
+          product_ids: Array.isArray(promo.product_ids) 
+            ? promo.product_ids.map(String) 
+            : [String(promo.product_ids)]
+        }));
+        
+        console.log('Formatted promotions:', this.promotions);
+        this.applyPromotions(); // Apply promotions after loading
+      },
+      error: (error) => {
+        console.error('Error loading promotions:', error);
+        this.showToast('Error loading promotions');
+      }
+    });
+  }
+
+applyPromotions() {
+  if (!this.promotions || !this.cartItems) {
+    console.warn('Promotions or cart items not loaded yet');
+    return;
+  }
+
+  console.log('Applying promotions to cart items...'); // Debug log
+
+  this.cartItems.forEach(item => {
+    console.log('Processing item:', item); // Debug log
+    
+    // Ensure we have the original price
+    if (!item.originalPrice) {
+      item.originalPrice = item.price;
+    }
+
+    const applicablePromotion = this.promotions.find(promo => {
+      // Convert both to strings for comparison
+      const cartItemProductId = String(item.product_id);
+      
+      // Debug log for promotion checking
+      console.log('Checking promotion:', {
+        promoName: promo.name,
+        promoProductIds: promo.product_ids,
+        itemProductId: cartItemProductId,
+        isIncluded: promo.product_ids.includes(cartItemProductId)
+      });
+
+      const isProductIncluded = promo.product_ids.includes(cartItemProductId);
+      const currentDate = new Date();
+      const startDate = new Date(promo.start_date);
+      const endDate = new Date(promo.end_date);
+      const isDateValid = currentDate >= startDate && currentDate <= endDate;
+      
+      return isProductIncluded && isDateValid;
+    });
+
+    if (applicablePromotion) {
+      console.log('Found applicable promotion:', applicablePromotion); // Debug log
+      
+      const discountPercentage = parseFloat(applicablePromotion.discount_percentage);
+      const discountAmount = item.originalPrice * (discountPercentage / 100);
+      
+      item.discountedPrice = this.roundToTwo(item.originalPrice - discountAmount);
+      item.hasPromotion = true;
+      item.promotionName = applicablePromotion.name;
+      item.discountPercentage = discountPercentage;
+      
+      console.log('Applied promotion to item:', {
+        itemName: item.name,
+        originalPrice: item.originalPrice,
+        discountedPrice: item.discountedPrice,
+        promotionName: applicablePromotion.name,
+        discountPercentage: discountPercentage
+      });
+    } else {
+      console.log('No applicable promotion found for item:', item.name);
+      item.discountedPrice = item.originalPrice;
+      item.hasPromotion = false;
+      item.promotionName = '';
+      item.discountPercentage = 0;
+    }
+  });
+
+  console.log('Final cart items after applying promotions:', this.cartItems);
+  this.calculateTotals();
+}
+
+// Add this helper method if you don't have it already
+private roundToTwo(num: number): number {
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
   switchMainImage(item: any, newImage: string) {
     const currentMain = item.image_url;
     item.image_url = newImage;
@@ -113,8 +250,6 @@ export class CartPage implements OnInit {
   }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
 
   loadPaystackScript() {
     if (!this.paystackScriptLoaded) {
@@ -168,7 +303,6 @@ export class CartPage implements OnInit {
     console.log('Verifying transaction with reference:', reference);
   }
 
-
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   
@@ -188,91 +322,6 @@ export class CartPage implements OnInit {
     }
   }
 
-  ngOnDestroy() {
-    if (this.cartSubscription) {
-      this.cartSubscription.unsubscribe();
-    }
-  }
-
-  
-  loadCart() {
-    this.cartSubscription = this.cartService.getCart().subscribe({
-      next: (items) => {
-        this.cartItems = items.map(item => ({
-          ...item,
-          price: this.ensureValidNumber(item.price),
-          quantity: this.ensureValidNumber(item.quantity)
-        }));
-        console.log('Cart items before promotions:', this.cartItems); // Debug log
-        this.applyPromotions();
-      },
-      error: (error) => {
-        console.error('Error loading cart:', error);
-        this.showToast('Error loading cart items');
-      }
-    });
-  }
-
-  async openPaymentModal() {
-    const modal = await this.modalController.create({
-      component: PaymentgateComponent
-    });
-    return await modal.present();
-  }
-
-  loadPromotions() {
-    this.promotionService.getPromotions().subscribe({
-      next: (promotions: Promotion[]) => {
-        console.log('Loaded promotions:', promotions); // Debug log
-        this.promotions = promotions;
-        this.loadCart(); // Reload cart after promotions are loaded
-      },
-      error: (error) => {
-        console.error('Error loading promotions:', error);
-        this.showToast('Error loading promotions');
-      }
-    });
-  }
-
-  applyPromotions() {
-    if (!this.promotions || !this.cartItems) {
-      console.warn('Promotions or cart items not loaded yet');
-      return;
-    }
-
-    this.cartItems.forEach(item => {
-      console.log(`Checking promotions for product ${item.product_id}`); // Debug log
-      
-      const applicablePromotion = this.promotions.find(promo => {
-        const isProductIncluded = promo.product_ids.includes(item.product_id);
-        const currentDate = new Date();
-        const startDate = new Date(promo.start_date);
-        const endDate = new Date(promo.end_date);
-        const isDateValid = currentDate >= startDate && currentDate <= endDate;
-        
-        console.log(`Promotion ${promo.name}: Product included: ${isProductIncluded}, Date valid: ${isDateValid}`);
-        
-        return isProductIncluded && isDateValid;
-      });
-
-      if (applicablePromotion) {
-        console.log(`Applying promotion ${applicablePromotion.name} to ${item.name}`);
-        const discountAmount = item.price * (applicablePromotion.discount_percentage / 100);
-        item.discountedPrice = this.roundToTwo(item.price - discountAmount);
-        item.hasPromotion = true;
-        item.promotionName = applicablePromotion.name;
-      } else {
-        console.log(`No applicable promotion found for ${item.name}`);
-        item.discountedPrice = item.price;
-        item.hasPromotion = false;
-        item.promotionName = '';
-      }
-    });
-
-    console.log('Cart items after promotions:', this.cartItems); // Debug log
-    this.calculateTotals();
-  }
-
 
   calculateTotals() {
     this.subtotal = this.roundToTwo(
@@ -288,13 +337,29 @@ export class CartPage implements OnInit {
     this.discountedTotal = this.roundToTwo(this.discountedSubtotal + this.tax);
   }
 
+  calculateTotals2() {
+    this.subtotal = this.cartItems.reduce((total, item) => {
+      return total + (item.originalPrice || item.price) * item.quantity;
+    }, 0);
+  
+    this.discountedSubtotal = this.cartItems.reduce((total, item) => {
+      const priceToUse = item.discountedPrice || item.price;
+      return total + (priceToUse * item.quantity);
+    }, 0);
+  
+    this.tax = this.discountedSubtotal * 0.175; // 17.5% tax
+    this.total = this.subtotal + this.tax;
+    this.discountedTotal = this.discountedSubtotal + this.tax;
+  
+    // Update the display
+    this.cd.detectChanges();
+  }
+  
+  // Update the cart page HTML template to show both original and discounted prices
+
   ensureValidNumber(value: any): number {
     const num = Number(value);
     return isNaN(num) ? 0 : num;
-  }
-
-  roundToTwo(num: number): number {
-    return Math.round((num + Number.EPSILON) * 100) / 100;
   }
 
   removeItem(productId: number) {

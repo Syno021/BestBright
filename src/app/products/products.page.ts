@@ -67,6 +67,100 @@ export class ProductsPage implements OnInit {
     this.loadPromotions();
   }
 
+  async addToCart(product: Product) {
+    if (!product.quantity || product.quantity < 1) {
+      product.quantity = 1;
+    }
+  
+    // Create cart item from product with proper price tracking
+    const cartItem = {
+      product_id: product.product_id,
+      name: product.name,
+      price: product.price, // This is the original price
+      originalPrice: product.price, // Always store the original price
+      discountedPrice: product.hasPromotion ? product.discountedPrice : product.price,
+      quantity: product.quantity,
+      image_url: product.image_url,
+      hasPromotion: product.hasPromotion,
+      promotionName: product.promotionName,
+      discountPercentage: product.hasPromotion ? 
+        ((product.price - (product.discountedPrice || 0)) / product.price) * 100 : 0
+    };
+  
+    console.log('Adding to cart:', cartItem); // Debug log
+  
+    try {
+      await this.cartService.addToCart(cartItem).toPromise();
+  
+      const toast = await this.toastController.create({
+        message: `${product.quantity} ${product.name}(s) added to cart${
+          product.hasPromotion ? ' with ' + product.promotionName + ' discount!' : ''
+        }`,
+        duration: 2000,
+        position: 'bottom',
+        color: product.hasPromotion ? 'success' : 'primary'
+      });
+      toast.present();
+  
+      product.quantity = 1;
+    } catch (error) {
+      console.error('Error adding product to cart:', error);
+      
+      const errorToast = await this.toastController.create({
+        message: 'Error adding product to cart. Please try again.',
+        duration: 3000,
+        position: 'bottom',
+        color: 'danger'
+      });
+      errorToast.present();
+    }
+  }
+
+  loadProducts() {
+    this.http.get<Product[]>('http://localhost/user_api/products.php').subscribe({
+      next: (data: Product[]) => {
+        this.products = data.map(product => ({ ...product, quantity: 1 }));
+        this.filteredProducts = this.products;
+        this.applyFilters();
+        this.extractCategories();
+        this.applyPromotions();
+        console.log('Products loaded:', this.products);
+      },
+      error: (error: HttpErrorResponse) => {
+        console.error('Error loading products:', error);
+      }
+    });
+  }
+
+  loadPromotions() {
+    this.promotionService.getPromotions().subscribe({
+      next: (promotions: Promotion[]) => {
+        this.promotions = promotions;
+        this.applyPromotions();
+      },
+      error: (error) => {
+        console.error('Error loading promotions:', error);
+      }
+    });
+  }
+
+  applyPromotions() {
+    this.products.forEach(product => {
+      const promotion = this.promotions.find(p => p.product_ids.includes(product.product_id));
+      if (promotion) {
+        const discountAmount = product.price * (promotion.discount_percentage / 100);
+        product.discountedPrice = this.roundToTwo(product.price - discountAmount);
+        product.hasPromotion = true;
+        product.promotionName = promotion.name;
+      } else {
+        product.discountedPrice = product.price;
+        product.hasPromotion = false;
+        product.promotionName = undefined;
+      }
+    });
+    this.applyFilters();
+  }
+
   searchProducts() {
     this.applyFilters();
   }
@@ -125,50 +219,7 @@ export class ProductsPage implements OnInit {
     // Add navigation logic here
   }
 
-  loadProducts() {
-    this.http.get<Product[]>('http://localhost/user_api/products.php').subscribe({
-      next: (data: Product[]) => {
-        this.products = data.map(product => ({ ...product, quantity: 1 }));
-        this.filteredProducts = this.products;
-        this.applyFilters();
-        this.extractCategories();
-        this.applyPromotions();
-        console.log('Products loaded:', this.products);
-      },
-      error: (error: HttpErrorResponse) => {
-        console.error('Error loading products:', error);
-      }
-    });
-  }
-
-  loadPromotions() {
-    this.promotionService.getPromotions().subscribe({
-      next: (promotions: Promotion[]) => {
-        this.promotions = promotions;
-        this.applyPromotions();
-      },
-      error: (error) => {
-        console.error('Error loading promotions:', error);
-      }
-    });
-  }
-
-  applyPromotions() {
-    this.products.forEach(product => {
-      const promotion = this.promotions.find(p => p.product_ids.includes(product.product_id));
-      if (promotion) {
-        const discountAmount = product.price * (promotion.discount_percentage / 100);
-        product.discountedPrice = this.roundToTwo(product.price - discountAmount);
-        product.hasPromotion = true;
-        product.promotionName = promotion.name;
-      } else {
-        product.discountedPrice = product.price;
-        product.hasPromotion = false;
-        product.promotionName = undefined;
-      }
-    });
-    this.applyFilters();
-  }
+  
 
   roundToTwo(num: number): number {
     return Math.round((num + Number.EPSILON) * 100) / 100;
@@ -192,29 +243,6 @@ export class ProductsPage implements OnInit {
     this.categories = ['All', ...Array.from(categoryMap.values())];
   }
 
-  rateProduct(product: Product, rating: number) {
-    const updatedProduct = { ...product };
-    const newTotalRatings = updatedProduct.total_ratings + 1;
-    const newAverage_rating = ((updatedProduct.average_rating * updatedProduct.total_ratings) + rating) / newTotalRatings;
-
-    this.http.post(`http://localhost/user_api/rate_product.php`, {
-      product_id: product.product_id,
-      rating: rating
-    }).subscribe({
-      next: (response) => {
-        updatedProduct.total_ratings = newTotalRatings;
-        updatedProduct.average_rating = newAverage_rating;
-        this.products = this.products.map(p => p.product_id === updatedProduct.product_id ? updatedProduct : p);
-        this.applyFilters();
-      },
-      error: (error: HttpErrorResponse) => {
-        console.error('Error rating product:', error);
-      }
-    });
-  }
-
-  
-
   increaseQuantity(product: Product) {
     if (product.quantity) {
       product.quantity++;
@@ -231,45 +259,7 @@ export class ProductsPage implements OnInit {
     }
   }
 
-  async addToCart(product: Product) {
-    if (!product.quantity || product.quantity < 1) {
-      product.quantity = 1;
-    }
-
-    // Create cart item from product
-    const cartItem = {
-      product_id: product.product_id,
-      name: product.name,
-      price: product.discountedPrice || product.price, // Use discounted price if available
-      quantity: product.quantity,
-      image_url: product.image_url
-    };
-
-    try {
-      // Use the cart service to add the item
-      await this.cartService.addToCart(cartItem).toPromise();
-
-      const toast = await this.toastController.create({
-        message: `${product.quantity} ${product.name}(s) added to cart`,
-        duration: 2000,
-        position: 'bottom',
-      });
-      toast.present();
-
-      // Reset quantity after adding to cart
-      product.quantity = 1;
-    } catch (error) {
-      console.error('Error adding product to cart:', error);
-      
-      const errorToast = await this.toastController.create({
-        message: 'Error adding product to cart. Please try again.',
-        duration: 3000,
-        position: 'bottom',
-        color: 'danger'
-      });
-      errorToast.present();
-    }
-  }
+  
 
   navigateToCart() {
     this.navCtrl.navigateForward('/cart');
