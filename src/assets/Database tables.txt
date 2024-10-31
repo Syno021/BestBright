@@ -178,3 +178,71 @@ CREATE TABLE track_product_quantity (
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
+
+CREATE TABLE ORDER_STATUS_HISTORY (
+    history_id INT PRIMARY KEY AUTO_INCREMENT,
+    order_id INT NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    changed_at DATETIME NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES ORDERS(order_id)
+);
+
+
+
+SET GLOBAL event_scheduler = ON;
+
+SHOW VARIABLES LIKE 'event_scheduler';
+
+-- Create stored procedure for cleanup
+DELIMITER //
+CREATE PROCEDURE cleanup_expired_promotions()
+BEGIN
+    -- Delete from promotion_products first
+    DELETE pp FROM promotion_products pp
+    INNER JOIN promotions p ON pp.promotion_id = p.promotion_id
+    WHERE p.end_date < CURDATE();
+    
+    -- Then delete expired promotions
+    DELETE FROM promotions 
+    WHERE end_date < CURDATE();
+    
+    -- Optional: Log deletions to a new table
+    INSERT INTO promotion_cleanup_log (cleanup_date, cleanup_type)
+    VALUES (NOW(), 'automatic');
+END //
+DELIMITER ;
+
+-- Create cleanup log table
+CREATE TABLE IF NOT EXISTS promotion_cleanup_log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    cleanup_date DATETIME NOT NULL,
+    cleanup_type VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create the event
+CREATE EVENT IF NOT EXISTS delete_expired_promotions
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_DATE + INTERVAL 1 DAY
+DO
+    CALL cleanup_expired_promotions();
+
+
+
+-- 1. First, enable the Event Scheduler immediately
+SET GLOBAL event_scheduler = ON;
+
+-- 2. Verify it's enabled
+SHOW VARIABLES LIKE 'event_scheduler';
+
+-- 3. Recreate the event (in case it wasn't created properly before)
+DROP EVENT IF EXISTS delete_expired_promotions;
+
+CREATE EVENT delete_expired_promotions
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_DATE + INTERVAL 1 DAY
+DO
+    CALL cleanup_expired_promotions();
+
+-- 4. Verify the event exists
+SHOW EVENTS;

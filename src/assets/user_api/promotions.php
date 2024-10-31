@@ -27,10 +27,47 @@ try {
     if ($conn->connect_error) {
         throw new Exception("Connection failed: " . $conn->connect_error);
     }
+    
 
     $requestMethod = $_SERVER['REQUEST_METHOD'];
 
     switch($requestMethod) {
+        case 'GET':
+            // Check if it's a cleanup status check
+            if (isset($_GET['action']) && $_GET['action'] === 'check_cleanup') {
+                $result = $conn->query("SHOW VARIABLES LIKE 'event_scheduler'");
+                $scheduler_status = $result->fetch_assoc();
+                
+                echo json_encode([
+                    'status' => 'success',
+                    'event_scheduler_status' => $scheduler_status['Value'],
+                    'next_cleanup' => 'Scheduled for midnight'
+                ]);
+                break;
+            }
+
+            // Original GET logic for promotions
+            $sql = "SELECT p.*, GROUP_CONCAT(pp.product_id) as product_ids, 
+                    GROUP_CONCAT(pr.name) as product_names 
+                    FROM promotions p 
+                    LEFT JOIN promotion_products pp ON p.promotion_id = pp.promotion_id
+                    LEFT JOIN products pr ON pp.product_id = pr.product_id
+                    GROUP BY p.promotion_id";
+            $result = $conn->query($sql);
+            
+            if (!$result) {
+                throw new Exception("Error executing query: " . $conn->error);
+            }
+            
+            $promotions = [];
+            while($row = $result->fetch_assoc()) {
+                $row['product_ids'] = $row['product_ids'] ? explode(',', $row['product_ids']) : [];
+                $row['product_names'] = $row['product_names'] ? explode(',', $row['product_names']) : [];
+                $promotions[] = $row;
+            }
+            echo json_encode($promotions);
+            break;
+
         case 'GET':
             // Get all promotions
             $sql = "SELECT p.*, GROUP_CONCAT(pp.product_id) as product_ids, 
@@ -257,8 +294,17 @@ try {
             
             break;
 
-        default:
-            throw new Exception("Unsupported request method");
+            case 'CLEANUP':
+                $deletedCount = cleanupExpiredPromotions($conn);
+                echo json_encode([
+                    'status' => 'success',
+                    'message' => "Manual cleanup completed successfully",
+                    'deleted_count' => $deletedCount
+                ]);
+                break;
+    
+            default:
+                throw new Exception("Unsupported request method");
     }
 
 } catch (Exception $e) {
