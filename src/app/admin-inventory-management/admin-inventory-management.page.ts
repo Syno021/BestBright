@@ -109,7 +109,6 @@ export class AdminInventoryManagementPage implements OnInit {
   ngOnInit() {
     this.loadProducts();
     this.loadCategories();
-    this.loadProductMovement();
     this.initializeFilteredProducts();
   }
 
@@ -137,18 +136,6 @@ export class AdminInventoryManagementPage implements OnInit {
     if (this.currentPage > 1) {
       this.currentPage--;
     }
-  }
-
-  loadProductMovement() {
-    this.http.get<{fastMoving: Product[], slowMoving: Product[]}>('http://localhost/user_api/update_stock.php?action=getProductMovement').subscribe(
-      (data) => {
-        this.fastMoving = data.fastMoving;
-        this.slowMoving = data.slowMoving;
-      },
-      error => {
-        console.error('Error fetching product movement data:', error);
-      }
-    );
   }
 
   toggleMovementView(event: any) {
@@ -206,27 +193,38 @@ export class AdminInventoryManagementPage implements OnInit {
   }
 
   applyFilters() {
-    if (!this.filtersApplied) {
-      this.initializeFilteredProducts();
-      return;
+    // Start with all products
+    let filtered = [...this.products];
+
+    // Only apply filters if they are actually set
+    if (this.searchQuery) {
+      filtered = filtered.filter(product =>
+        product.name.toLowerCase().includes(this.searchQuery.toLowerCase())
+      );
     }
 
-    this.filteredProducts = this.products.filter(product => {
-      const matchesSearch = this.searchQuery ? 
-        product.name.toLowerCase().includes(this.searchQuery.toLowerCase()) : true;
+    if (this.selectedCategory) {
+      filtered = filtered.filter(product =>
+        product.category === this.selectedCategory
+      );
+    }
 
-      const matchesCategory = this.selectedCategory ? 
-        product.category === this.selectedCategory : true;
-
-      const matchesStatus = this.selectedStatus ? 
-        (this.selectedStatus === 'available' ? 
+    if (this.selectedStatus) {
+      filtered = filtered.filter(product =>
+        this.selectedStatus === 'available' ? 
           product.stock_quantity > 0 : 
-          product.stock_quantity === 0) : true;
+          product.stock_quantity === 0
+      );
+    }
 
-      const matchesStockLevel = this.getStockLevelMatch(product.stock_quantity);
+    if (this.selectedStockLevel) {
+      filtered = filtered.filter(product =>
+        this.getStockLevelMatch(product.stock_quantity)
+      );
+    }
 
-      return matchesSearch && matchesCategory && matchesStatus && matchesStockLevel;
-    });
+    this.filteredProducts = filtered;
+    this.currentPage = 1; // Reset to first page when filters change
   }
 
   getStockLevelMatch(stockQuantity: number): boolean {
@@ -281,7 +279,9 @@ export class AdminInventoryManagementPage implements OnInit {
       .subscribe(
         data => {
           this.products = data;
+          this.filteredProducts = [...this.products]; // Initialize filtered products with all products
           this.updateProductLists();
+          this.applyFilters(); // Apply any existing filters
         },
         (error: HttpErrorResponse) => {
           console.error('Error fetching products:', error);

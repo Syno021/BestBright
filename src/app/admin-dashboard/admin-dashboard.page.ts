@@ -23,14 +23,7 @@ interface Sale {
   amount_paid: number;
 }
 
-interface RecentActivity {
-  id: number;
-  type: 'order' | 'sale';
-  message: string;
-  amount: number;
-  status?: string;
-  payment_method?: string;
-}
+
 
 interface ProductMovement {
   product_id: number;
@@ -57,7 +50,6 @@ export class AdminDashboardPage implements OnInit, AfterViewInit {
   salesChart: Chart | null = null;
   salesData: any[] = [];
   currentFilter: string = 'week';
-  recentActivities: RecentActivity[] = [];
   isLoadingActivities = false;
   activitiesError: string | null = null;
 
@@ -76,67 +68,8 @@ export class AdminDashboardPage implements OnInit, AfterViewInit {
 
   ngAfterViewInit() {
     this.updateChart();
-    this.fetchRecentActivities();
   }
-  fetchRecentActivities() {
-    this.isLoadingActivities = true;
-    this.activitiesError = null;
   
-    const orders$ = this.http.get<{orderData: Order[]}>('http://localhost/user_api/orders.php').pipe(
-      map(response => response.orderData),
-      catchError(error => {
-        console.error('Error fetching orders:', error);
-        return of([]);
-      })
-    );
-  
-    const sales$ = this.http.get<{salesData: Sale[]}>('http://localhost/user_api/sales.php').pipe(
-      map(response => response.salesData),
-      catchError(error => {
-        console.error('Error fetching sales:', error);
-        return of([]);
-      })
-    );
-  
-    forkJoin([orders$, sales$]).pipe(
-      map(([orders, sales]) => {
-        console.log('Fetched orders:', orders);
-        console.log('Fetched sales:', sales);
-  
-        const orderActivities: RecentActivity[] = orders.map(order => ({
-          id: order.order_id,
-          type: 'order',
-          message: `Order #${order.order_id} ${order.status}`,
-          amount: parseFloat(order.total_amount), // This should now work correctly
-          status: order.status
-        }));
-  
-        const saleActivities: RecentActivity[] = sales.map(sale => ({
-          id: sale.sale_id,
-          type: 'sale',
-          message: `Sale #${sale.sale_id} completed`,
-          amount: sale.total_amount,
-          payment_method: sale.payment_method
-        }));
-  
-        return [...orderActivities, ...saleActivities]
-          .sort((a, b) => b.id - a.id)
-          .slice(0, 5);
-      })
-    ).subscribe({
-      next: (activities) => {
-        console.log('Processed activities:', activities);
-        this.recentActivities = activities;
-        this.isLoadingActivities = false;
-        setTimeout(() => this.animateActivities(), 100);
-      },
-      error: (error) => {
-        console.error('Error processing activities:', error);
-        this.activitiesError = 'Failed to load recent activities';
-        this.isLoadingActivities = false;
-      }
-    });
-  }
   async animateActivities() {
     const activityItems = document.querySelectorAll('.activity-item');
     for (let i = 0; i < activityItems.length; i++) {
@@ -163,12 +96,6 @@ export class AdminDashboardPage implements OnInit, AfterViewInit {
     }
   }
 
-  refreshActivities(event: any) {
-    this.fetchRecentActivities();
-    setTimeout(() => {
-      event.target.complete();
-    }, 1000);
-  }
   fetchUserCount() {
     this.http.get<{ user_count: number }>('http://localhost/user_api/register.php?count=true')
       .subscribe({

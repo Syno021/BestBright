@@ -14,15 +14,20 @@ export class AppComponent {
     { title: 'Products', url: '/products', icon: 'grid' },
     { title: 'Promotions', url: '/promotions', icon: 'pricetag' },
     { title: 'Account', url: '/account', icon: 'person' },
+    { title: 'Cart', url: '/cart', icon: 'cart' },
+    { title: 'about us', url: '/about-us', icon: 'content' },
+    { title: 'contact us', url: '/contact', icon: 'phone' },
   ];
 
   public adminPages = [
     { title: 'Dashboard', url: '/admin-dashboard', icon: 'speedometer' },
+    { title: 'Stock Movement', url: '/stockmovement', icon: 'cube' },
     { title: 'Customer Management', url: '/admin-customer-management', icon: 'people' },
     { title: 'Inventory Management', url: '/admin-inventory-management', icon: 'cube' },
     { title: 'Order Management', url: '/admin-order-management', icon: 'cart' },
     { title: 'Sales Report', url: '/admin-sales-report', icon: 'bar-chart' },
     { title: 'User Management', url: '/admin-user-management', icon: 'person-add' },
+    
   ];
 
   public showAdminNav = false;

@@ -1,13 +1,12 @@
-<ion-header [translucent]="true">
-  <ion-toolbar>
-    <ion-title>Order Management</ion-title>
-  </ion-toolbar>
-</ion-header>
-
 <ion-content [fullscreen]="true">
 
   <ion-content>
-    <ion-searchbar placeholder="Search by Order ID" (ionChange)="onSearchChange($event)"></ion-searchbar>
+    <ion-searchbar 
+    placeholder="Search by Order ID or User ID" 
+    [(ngModel)]="searchTerm"
+    (ionChange)="onSearchChange($event)">
+  </ion-searchbar>
+  
     <ion-item>
       <ion-label>Filter By</ion-label>
       <ion-select placeholder="Select Filter" (ionChange)="onFilterTypeChange($event)">
@@ -54,13 +53,7 @@
             <ion-col>{{ order.created_at }}</ion-col>
             <ion-col>
               <ion-button fill="clear" color="primary" (click)="viewOrderDetails(order)">
-                <ion-icon name="eye-outline"></ion-icon>
-              </ion-button>
-              <ion-button fill="clear" color="success" (click)="openUpdateStatusModal(order)">
                 <ion-icon name="sync-outline"></ion-icon>
-              </ion-button>
-              <ion-button fill="clear" color="danger" (click)="deleteOrder(order)">
-                <ion-icon name="trash-outline"></ion-icon>
               </ion-button>
             </ion-col>
           </ion-row>

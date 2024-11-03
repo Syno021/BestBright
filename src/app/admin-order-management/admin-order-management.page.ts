@@ -29,9 +29,9 @@ export class AdminOrderManagementPage implements OnInit {
   orderData: any[] = [];
   selectedStatus: string = '';
   currentOrder: any = null;
-  searchTerm: string = '';
+  searchTerm: any = '';
   filterType: string = '';
-  filterValue: string = '';
+  filterValue: any = '';
   filteredOrderData: any[] = [];
 
   itemsPerPage: number = 10;
@@ -56,7 +56,7 @@ export class AdminOrderManagementPage implements OnInit {
 
   get paginatedOrderData(): any[] {
     const start = (this.currentPage - 1) * this.itemsPerPage;
-    return this.orderData.slice(start, start + this.itemsPerPage);
+    return this.filteredOrderData.slice(start, start + this.itemsPerPage);
   }
 
   nextPage() {
@@ -76,6 +76,7 @@ export class AdminOrderManagementPage implements OnInit {
       .subscribe(
         response => {
           this.orderData = response.orderData;
+          this.applyFilters(); // Apply filters after fetching data
         },
         error => {
           console.error('Error fetching orders:', error);
@@ -84,36 +85,76 @@ export class AdminOrderManagementPage implements OnInit {
       );
   }
 
-  applyFilters() {
-    this.filteredOrderData = this.orderData.filter(order => {
-      const matchesSearch = this.searchTerm ? order.order_id.toString().includes(this.searchTerm) : true;
-      let matchesFilter = true;
+  private safeToString(value: any): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).toLowerCase();
+  }
 
-      if (this.filterType === 'status' && this.filterValue) {
-        matchesFilter = order.status.toLowerCase() === this.filterValue.toLowerCase();
-      } else if (this.filterType === 'date' && this.filterValue) {
-        const orderDate = new Date(order.created_at).toDateString();
-        const filterDate = new Date(this.filterValue).toDateString();
-        matchesFilter = orderDate === filterDate;
+  applyFilters() {
+    try {
+      // Start with the complete dataset
+      let filtered = [...this.orderData];
+
+      // Apply search filter if search term exists
+      if (this.searchTerm?.trim()) {
+        const searchLower = this.searchTerm.toLowerCase().trim();
+        filtered = filtered.filter(order => {
+          // Safely convert and check order_id and user_id
+          const orderId = this.safeToString(order?.order_id);
+          const userId = this.safeToString(order?.user_id);
+          
+          return orderId.includes(searchLower) || 
+                 userId.includes(searchLower);
+        });
       }
 
-      return matchesSearch && matchesFilter;
-    });
+      // Apply type-specific filters
+      if (this.filterType && this.filterValue) {
+        switch (this.filterType) {
+          case 'status':
+            filtered = filtered.filter(order => 
+              this.safeToString(order?.status) === this.safeToString(this.filterValue)
+            );
+            break;
+            
+          case 'date':
+            if (this.filterValue) {
+              const filterDate = new Date(this.filterValue);
+              filtered = filtered.filter(order => {
+                if (!order?.created_at) return false;
+                const orderDate = new Date(order.created_at);
+                return orderDate.toDateString() === filterDate.toDateString();
+              });
+            }
+            break;
+        }
+      }
+
+      this.filteredOrderData = filtered;
+      this.currentPage = 1; // Reset to first page when filters change
+      
+    } catch (error) {
+      console.error('Error in applyFilters:', error);
+      this.presentToast('Error applying filters', 'danger');
+      this.filteredOrderData = this.orderData; // Fallback to showing all data
+    }
   }
 
   onSearchChange(event: any) {
-    this.searchTerm = event.detail.value;
+    this.searchTerm = event?.detail?.value ?? '';
     this.applyFilters();
   }
 
   onFilterTypeChange(event: any) {
-    this.filterType = event.detail.value;
+    this.filterType = event?.detail?.value ?? '';
     this.filterValue = ''; // Reset filter value when type changes
     this.applyFilters();
   }
 
   onFilterValueChange(event: any) {
-    this.filterValue = event.detail.value;
+    this.filterValue = event?.detail?.value ?? '';
     this.applyFilters();
   }
 
@@ -265,31 +306,73 @@ export class AdminOrderManagementPage implements OnInit {
 
   async updateOrderStatus() {
     if (!this.currentOrderDetails || !this.selectedStatus) {
-      console.error('Validation Error:', {
-        currentOrderDetails: this.currentOrderDetails,
-        selectedStatus: this.selectedStatus
-      });
       this.presentToast('Please select a status', 'danger');
       return;
     }
-
+  
+    // Status validation checks
+    const currentStatus = this.currentOrderDetails.status;
+    const newStatus = this.selectedStatus;
+  
+    // Define valid status transitions
+    const validTransitions: { [key: string]: string[] } = {
+      'pending': ['payment-received'],
+      'payment-received': ['order-processed'],
+      'order-processed': ['shipped'],
+      'shipped': ['delivered']
+    };
+  
+    // Check if the transition is valid
+    if (validTransitions[currentStatus] && !validTransitions[currentStatus].includes(newStatus)) {
+      let requiredStatus = '';
+      
+      switch (newStatus) {
+        case 'order-processed':
+          if (currentStatus !== 'payment-received') {
+            requiredStatus = 'payment-received';
+          }
+          break;
+        case 'shipped':
+          if (currentStatus !== 'order-processed') {
+            requiredStatus = 'order-processed';
+          }
+          break;
+        case 'delivered':
+          if (currentStatus !== 'shipped') {
+            requiredStatus = 'shipped';
+          }
+          break;
+      }
+  
+      if (requiredStatus) {
+        this.presentToast(`Order must be in ${requiredStatus} status before moving to ${newStatus}`, 'danger');
+        return;
+      }
+    }
+  
+    // If transitioning to order-processed, check for payment
+    if (newStatus === 'order-processed' && currentStatus !== 'payment-received') {
+      this.presentToast('Awaiting proof of payment. Order must be marked as payment-received first.', 'danger');
+      return;
+    }
+  
     const loader = await this.loadingController.create({
       message: 'Updating order status...',
     });
     await loader.present();
-
+  
     console.log('Attempting to update order:', {
       orderId: this.currentOrderDetails.order_id,
-      currentStatus: this.currentOrderDetails.status,
-      newStatus: this.selectedStatus,
+      currentStatus: currentStatus,
+      newStatus: newStatus,
       timestamp: new Date().toISOString()
     });
-
+  
     const updateData = {
-      status: this.selectedStatus,
-      previousStatus: this.currentOrderDetails.status
+      status: newStatus,
+      previousStatus: currentStatus
     };
-
+  
     this.http.put(`http://localhost/user_api/orders.php?id=${this.currentOrderDetails.order_id}`, updateData)
       .pipe(
         tap(response => {
@@ -308,7 +391,7 @@ export class AdminOrderManagementPage implements OnInit {
             this.fetchOrders();
             
             // Send email to user about order status update
-            await this.sendOrderStatusUpdateEmail(this.currentOrderDetails, this.selectedStatus);
+            await this.sendOrderStatusUpdateEmail(this.currentOrderDetails, newStatus);
             
             this.viewOrderModal.dismiss();
           } else {

@@ -55,7 +55,7 @@ export class CashierPage implements OnInit {
 
   get paginatedOrderData(): any[] {
     const start = (this.currentPage - 1) * this.itemsPerPage;
-    return this.orderData.slice(start, start + this.itemsPerPage);
+    return this.filteredOrderData.slice(start, start + this.itemsPerPage);
   }
 
   nextPage() {
@@ -75,6 +75,7 @@ export class CashierPage implements OnInit {
       .subscribe(
         response => {
           this.orderData = response.orderData;
+          this.applyFilters(); // Apply filters after fetching data
         },
         error => {
           console.error('Error fetching orders:', error);
@@ -83,36 +84,76 @@ export class CashierPage implements OnInit {
       );
   }
 
-  applyFilters() {
-    this.filteredOrderData = this.orderData.filter(order => {
-      const matchesSearch = this.searchTerm ? order.order_id.toString().includes(this.searchTerm) : true;
-      let matchesFilter = true;
+  private safeToString(value: any): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    return String(value).toLowerCase();
+  }
 
-      if (this.filterType === 'status' && this.filterValue) {
-        matchesFilter = order.status.toLowerCase() === this.filterValue.toLowerCase();
-      } else if (this.filterType === 'date' && this.filterValue) {
-        const orderDate = new Date(order.created_at).toDateString();
-        const filterDate = new Date(this.filterValue).toDateString();
-        matchesFilter = orderDate === filterDate;
+  applyFilters() {
+    try {
+      // Start with the complete dataset
+      let filtered = [...this.orderData];
+
+      // Apply search filter if search term exists
+      if (this.searchTerm?.trim()) {
+        const searchLower = this.searchTerm.toLowerCase().trim();
+        filtered = filtered.filter(order => {
+          // Safely convert and check order_id and user_id
+          const orderId = this.safeToString(order?.order_id);
+          const userId = this.safeToString(order?.user_id);
+          
+          return orderId.includes(searchLower) || 
+                 userId.includes(searchLower);
+        });
       }
 
-      return matchesSearch && matchesFilter;
-    });
+      // Apply type-specific filters
+      if (this.filterType && this.filterValue) {
+        switch (this.filterType) {
+          case 'status':
+            filtered = filtered.filter(order => 
+              this.safeToString(order?.status) === this.safeToString(this.filterValue)
+            );
+            break;
+            
+          case 'date':
+            if (this.filterValue) {
+              const filterDate = new Date(this.filterValue);
+              filtered = filtered.filter(order => {
+                if (!order?.created_at) return false;
+                const orderDate = new Date(order.created_at);
+                return orderDate.toDateString() === filterDate.toDateString();
+              });
+            }
+            break;
+        }
+      }
+
+      this.filteredOrderData = filtered;
+      this.currentPage = 1; // Reset to first page when filters change
+      
+    } catch (error) {
+      console.error('Error in applyFilters:', error);
+      this.presentToast('Error applying filters', 'danger');
+      this.filteredOrderData = this.orderData; // Fallback to showing all data
+    }
   }
 
   onSearchChange(event: any) {
-    this.searchTerm = event.detail.value;
+    this.searchTerm = event?.detail?.value ?? '';
     this.applyFilters();
   }
 
   onFilterTypeChange(event: any) {
-    this.filterType = event.detail.value;
+    this.filterType = event?.detail?.value ?? '';
     this.filterValue = ''; // Reset filter value when type changes
     this.applyFilters();
   }
 
   onFilterValueChange(event: any) {
-    this.filterValue = event.detail.value;
+    this.filterValue = event?.detail?.value ?? '';
     this.applyFilters();
   }
 

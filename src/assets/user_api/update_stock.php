@@ -1,4 +1,5 @@
 <?php
+//update_stock.php
 // Prevent any unwanted output
 ob_start();
 
@@ -38,6 +39,76 @@ function sendJsonResponse($data, $statusCode = 200) {
     exit();
 }
 
+function analyzeStockMovement($conn, $product_id) {
+    // Get the last 30 days of movement data
+    $sql = "SELECT 
+        p.stock_quantity as current_stock,
+        p.name as product_name,
+        COALESCE(SUM(CASE 
+            WHEN tpm.movement_type = 'OUT' 
+            AND tpm.movement_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
+            THEN tpm.quantity_moved 
+            ELSE 0 
+        END), 0) as total_outward,
+        COALESCE(
+            (SELECT stock_quantity + COALESCE(SUM(CASE 
+                WHEN movement_type = 'OUT' THEN quantity_moved
+                ELSE -quantity_moved 
+            END), 0)
+            FROM track_product_movements 
+            WHERE product_id = p.product_id 
+            AND movement_date >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
+            GROUP BY product_id), p.stock_quantity
+        ) as initial_stock
+    FROM products p
+    LEFT JOIN track_product_movements tpm ON p.product_id = tpm.product_id
+    WHERE p.product_id = ?
+    GROUP BY p.product_id";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $product_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = $result->fetch_assoc();
+
+    if (!$data) {
+        return [
+            'movement_category' => 'unknown',
+            'consumption_rate' => 0,
+            'days_to_depletion' => null
+        ];
+    }
+
+    $initial_stock = $data['initial_stock'];
+    $current_stock = $data['current_stock'];
+    $total_outward = $data['total_outward'];
+
+    // Calculate consumption rate as percentage of initial stock consumed
+    $consumption_rate = $initial_stock > 0 ? ($total_outward / $initial_stock) * 100 : 0;
+
+    // Determine movement category
+    $movement_category = '';
+    if ($current_stock == 0 || $consumption_rate >= 75) {
+        $movement_category = 'fast';
+    } elseif ($consumption_rate >= 40) {
+        $movement_category = 'moderate';
+    } else {
+        $movement_category = 'slow';
+    }
+
+    // Calculate estimated days until depletion based on daily consumption rate
+    $daily_consumption = $total_outward / 30;
+    $days_to_depletion = $daily_consumption > 0 ? ceil($current_stock / $daily_consumption) : null;
+
+    return [
+        'movement_category' => $movement_category,
+        'consumption_rate' => round($consumption_rate, 2),
+        'days_to_depletion' => $days_to_depletion,
+        'initial_stock' => $initial_stock,
+        'total_outward' => $total_outward
+    ];
+}
+
 $servername = "localhost";
 $username = "root";
 $password = "";
@@ -59,31 +130,21 @@ try {
                 switch ($_GET['action']) {
                     case 'getTrackProductQuantity':
                         try {
-                            // First, verify if the table exists
-                            $tableCheck = $conn->query("SHOW TABLES LIKE 'track_product_quantity'");
-                            if ($tableCheck->num_rows == 0) {
-                                throw new Exception("Table 'track_product_quantity' does not exist");
-                            }
-
-                            // Get the table structure for debugging
-                            $columns = $conn->query("SHOW COLUMNS FROM track_product_quantity");
-                            $columnNames = [];
-                            while ($col = $columns->fetch_assoc()) {
-                                $columnNames[] = $col['Field'];
-                            }
-                            logMessage("Table columns: " . json_encode($columnNames));
-
-                            // Modified query with error checking
+                            // Get all movement history
                             $sql = "SELECT 
-                                tpq.*,
+                                tpm.movement_id,
+                                tpm.product_id,
                                 p.name as product_name,
                                 p.category,
-                                p.stock_quantity as current_stock
-                            FROM track_product_quantity tpq
-                            LEFT JOIN products p ON tpq.product_id = p.product_id
-                            ORDER BY tpq.created_at DESC";
-
-                            logMessage("Executing query: " . $sql);
+                                p.stock_quantity as current_stock,
+                                tpm.quantity_moved,
+                                tpm.movement_type,
+                                tpm.movement_date,
+                                tpm.created_at,
+                                tpm.notes
+                            FROM track_product_movements tpm
+                            LEFT JOIN products p ON tpm.product_id = p.product_id
+                            ORDER BY tpm.movement_date DESC, tpm.created_at DESC";
                             
                             $result = $conn->query($sql);
                             
@@ -91,30 +152,56 @@ try {
                                 throw new Exception("Query failed: " . $conn->error);
                             }
                             
-                            $trackingData = [];
+                            $movementHistory = [];
                             while ($row = $result->fetch_assoc()) {
-                                // Check if 'id' column exists, if not use alternate primary key
-                                $tracking_id = isset($row['id']) ? $row['id'] : 
-                                             (isset($row['tracking_id']) ? $row['tracking_id'] : null);
-                                
-                                $trackingData[] = [
-                                    'tracking_id' => $tracking_id ? (int)$tracking_id : null,
+                                $movementHistory[] = [
+                                    'movement_id' => (int)$row['movement_id'],
                                     'product_id' => (int)$row['product_id'],
                                     'product_name' => $row['product_name'] ?? 'Unknown',
                                     'category' => $row['category'] ?? 'Uncategorized',
-                                    'quantity_out' => (int)($row['quantity_out'] ?? 0),
-                                    'current_stock' => (int)($row['current_stock'] ?? 0),
-                                    'created_at' => $row['created_at'] ?? null,
-                                    'updated_at' => $row['updated_at'] ?? null
+                                    'quantity_moved' => (int)$row['quantity_moved'],
+                                    'movement_type' => $row['movement_type'],
+                                    'current_stock' => (int)$row['current_stock'],
+                                    'movement_date' => $row['movement_date'],
+                                    'created_at' => $row['created_at'],
+                                    'notes' => $row['notes']
                                 ];
                             }
                             
-                            sendJsonResponse($trackingData);
+                            sendJsonResponse($movementHistory);
                         } catch (Exception $e) {
                             logMessage("Error in getTrackProductQuantity: " . $e->getMessage());
-                            logMessage("SQL Error: " . $conn->error);
                             sendJsonResponse([
-                                "error" => "Failed to fetch tracking data",
+                                "error" => "Failed to fetch movement history",
+                                "debug_message" => $e->getMessage()
+                            ], 500);
+                        }
+                        break;
+
+                    case 'getStockAnalysis':
+                        try {
+                            $product_id = isset($_GET['product_id']) ? (int)$_GET['product_id'] : null;
+                            
+                            if ($product_id) {
+                                $analysis = analyzeStockMovement($conn, $product_id);
+                                sendJsonResponse($analysis);
+                            } else {
+                                // Get analysis for all products
+                                $sql = "SELECT product_id FROM products";
+                                $result = $conn->query($sql);
+                                $analyses = [];
+                                
+                                while ($row = $result->fetch_assoc()) {
+                                    $product_id = $row['product_id'];
+                                    $analyses[$product_id] = analyzeStockMovement($conn, $product_id);
+                                }
+                                
+                                sendJsonResponse($analyses);
+                            }
+                        } catch (Exception $e) {
+                            logMessage("Error in getStockAnalysis: " . $e->getMessage());
+                            sendJsonResponse([
+                                "error" => "Failed to analyze stock movement",
                                 "debug_message" => $e->getMessage()
                             ], 500);
                         }
@@ -124,30 +211,24 @@ try {
                         sendJsonResponse(["error" => "Invalid action specified"], 400);
                         break;
                 }
-            } else {
-                sendJsonResponse(["error" => "No action specified"], 400);
             }
             break;
-
+    
         case 'PUT':
             try {
                 $rawData = file_get_contents("php://input");
                 $data = json_decode($rawData);
-
+    
                 if (!empty($data->product_id) && isset($data->quantity)) {
                     $product_id = $conn->real_escape_string($data->product_id);
                     $new_quantity = $conn->real_escape_string($data->quantity);
-
-                    // Log the incoming data
-                    logMessage("Updating stock - Product ID: $product_id, New Quantity: $new_quantity");
-
-                    // Start transaction
+                    $notes = $conn->real_escape_string($data->notes ?? '');
+    
                     $conn->begin_transaction();
-
+    
                     try {
-                        // Get the current stock quantity
-                        $query = "SELECT stock_quantity FROM products WHERE product_id = ?";
-                        $stmt = $conn->prepare($query);
+                        // Get current stock quantity
+                        $stmt = $conn->prepare("SELECT stock_quantity FROM products WHERE product_id = ?");
                         $stmt->bind_param("i", $product_id);
                         $stmt->execute();
                         $result = $stmt->get_result();
@@ -159,75 +240,45 @@ try {
                         $row = $result->fetch_assoc();
                         $current_quantity = $row['stock_quantity'];
                         $stmt->close();
-
-                        // Calculate the quantity that was moved
-                        $quantity_moved = $current_quantity - $new_quantity;
-                        
-                        if ($quantity_moved < 0) {
-                            logMessage("Warning: Stock increase detected");
-                        }
-
-                        // Update the stock in the products table
-                        $update_query = "UPDATE products SET stock_quantity = ? WHERE product_id = ?";
-                        $stmt = $conn->prepare($update_query);
+    
+                        // Calculate quantity moved and movement type
+                        $quantity_moved = abs($current_quantity - $new_quantity);
+                        $movement_type = $current_quantity > $new_quantity ? 'OUT' : 'IN';
+    
+                        // Update products table
+                        $stmt = $conn->prepare("UPDATE products SET stock_quantity = ? WHERE product_id = ?");
                         $stmt->bind_param("ii", $new_quantity, $product_id);
                         
                         if (!$stmt->execute()) {
-                            throw new Exception("Failed to update product stock: " . $stmt->error);
+                            throw new Exception("Failed to update product stock");
                         }
                         $stmt->close();
-
-                        // Check if the product_id exists in track_product_quantity
-                        $check_query = "SELECT quantity_out FROM track_product_quantity WHERE product_id = ?";
-                        $stmt = $conn->prepare($check_query);
-                        $stmt->bind_param("i", $product_id);
-                        $stmt->execute();
-                        $result = $stmt->get_result();
-                        
-                        if ($result->num_rows > 0) {
-                            // Product exists, update the quantity
-                            $row = $result->fetch_assoc();
-                            $new_quantity_out = $row['quantity_out'] + $quantity_moved;
-                            $update_track_query = "UPDATE track_product_quantity 
-                                                 SET quantity_out = ?, 
-                                                     updated_at = CURRENT_TIMESTAMP 
-                                                 WHERE product_id = ?";
-                            $stmt = $conn->prepare($update_track_query);
-                            $stmt->bind_param("ii", $new_quantity_out, $product_id);
-                        } else {
-                            // Product doesn't exist, insert new record
-                            $update_track_query = "INSERT INTO track_product_quantity 
-                                                 (product_id, quantity_out) 
-                                                 VALUES (?, ?)";
-                            $stmt = $conn->prepare($update_track_query);
-                            $stmt->bind_param("ii", $product_id, $quantity_moved);
-                        }
+    
+                        // Insert movement record
+                        $stmt = $conn->prepare("INSERT INTO track_product_movements 
+                            (product_id, quantity_moved, movement_type, movement_date, notes) 
+                            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)");
+                        $stmt->bind_param("iiss", $product_id, $quantity_moved, $movement_type, $notes);
                         
                         if (!$stmt->execute()) {
-                            throw new Exception("Failed to update tracking: " . $stmt->error);
+                            throw new Exception("Failed to record movement");
                         }
-                        $stmt->close();
-
-                        // Commit the transaction
+                        
                         $conn->commit();
-
+    
                         sendJsonResponse([
-                            "message" => "Stock updated and tracked successfully",
+                            "message" => "Stock movement recorded successfully",
                             "details" => [
                                 "product_id" => $product_id,
                                 "previous_quantity" => $current_quantity,
                                 "new_quantity" => $new_quantity,
-                                "quantity_moved" => $quantity_moved
+                                "quantity_moved" => $quantity_moved,
+                                "movement_type" => $movement_type
                             ]
                         ]);
                     } catch (Exception $e) {
-                        // An error occurred, rollback the transaction
                         $conn->rollback();
-                        logMessage("Transaction failed: " . $e->getMessage());
-                        sendJsonResponse([
-                            "error" => "Unable to update and track stock",
-                            "debug_message" => $e->getMessage()
-                        ], 500);
+                        throw $e;
                     }
                 } else {
                     sendJsonResponse([
