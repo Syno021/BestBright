@@ -30,17 +30,17 @@
 
       <ion-grid *ngIf="!isLoading && !productsError">
         <ion-row class="header-row">
-          <ion-col size="2">Item ID</ion-col>
-          <ion-col size="3">Name</ion-col>
+          <ion-col size="2">Name</ion-col>
           <ion-col size="2">Category</ion-col>
           <ion-col size="2">Status</ion-col>
           <ion-col size="2">Stock</ion-col>
-          <ion-col size="1">Actions</ion-col>
+
+          <ion-col size="2">Movement Pattern</ion-col>
+          <ion-col size="2">Days to Depletion</ion-col>
         </ion-row>
 
         <ion-row *ngFor="let item of products" class="data-row">
-          <ion-col size="2">{{ item.product_id }}</ion-col>
-          <ion-col size="3">{{ item.name }}</ion-col>
+          <ion-col size="2">{{ item.name }}</ion-col>
           <ion-col size="2">{{ item.category }}</ion-col>
           <ion-col size="2">
             <ion-badge [color]="item.stock_quantity > 0 ? 'success' : 'danger'">
@@ -52,10 +52,18 @@
               {{ item.stock_quantity }}
             </ion-text>
           </ion-col>
-          <ion-col size="1">
-            <ion-button fill="clear" size="small">
-              <ion-icon name="create-outline"></ion-icon>
-            </ion-button>
+          <ion-col size="2">
+            <ion-badge [color]="getMovementCategoryColor(stockAnalyses[item.product_id]?.movement_category)">
+              {{ getMovementCategoryLabel(stockAnalyses[item.product_id]?.movement_category) }}
+            </ion-badge>
+          </ion-col>
+          <ion-col size="2">
+            <ng-container *ngIf="stockAnalyses[item.product_id]?.days_to_depletion !== null">
+              {{ stockAnalyses[item.product_id]?.days_to_depletion }} days
+            </ng-container>
+            <ng-container *ngIf="stockAnalyses[item.product_id]?.days_to_depletion === null">
+              N/A
+            </ng-container>
           </ion-col>
         </ion-row>
       </ion-grid>
@@ -66,47 +74,121 @@
   <ion-card>
     <ion-card-header>
       <ion-card-title>Stock Movement History</ion-card-title>
+      
+      <!-- Date Filter Controls -->
+      <ion-item>
+        <ion-label>Filter by Date</ion-label>
+        <ion-select [(ngModel)]="selectedDateFilter" (ionChange)="onDateFilterChange()">
+          <ion-select-option value="all">All Time</ion-select-option>
+          <ion-select-option value="today">Today</ion-select-option>
+          <ion-select-option value="7days">Last 7 Days</ion-select-option>
+          <ion-select-option value="month">Last 30 Days</ion-select-option>
+          <ion-select-option value="custom">Custom Date</ion-select-option>
+        </ion-select>
+      </ion-item>
+
+      <!-- Custom Date Picker -->
+      <ion-item *ngIf="selectedDateFilter === 'custom'">
+        <ion-label>Select Date</ion-label>
+        <ion-datetime
+          displayFormat="MMM DD, YYYY"
+          [(ngModel)]="customDate"
+          (ionChange)="onDateFilterChange()"
+        ></ion-datetime>
+      </ion-item>
+
+      <!-- Movement Summary Card -->
+      <ion-card class="summary-card">
+        <ion-card-header>
+          <ion-card-subtitle>Movement Summary - {{ getDateRangeLabel() }}</ion-card-subtitle>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-grid>
+            <ion-row>
+              <ion-col size="4">
+                <div class="summary-item">
+                  <strong>Total Moved</strong>
+                  <div class="summary-value">{{ getTotalMovedQuantity() }}</div>
+                </div>
+              </ion-col>
+              <ion-col size="4">
+                <div class="summary-item">
+                  <strong>Daily Average</strong>
+                  <div class="summary-value">{{ getDailyAverage() | number:'1.0-2' }}</div>
+                </div>
+              </ion-col>
+              <ion-col size="4">
+                <div class="summary-item">
+                  <strong>Days Covered</strong>
+                  <div class="summary-value">{{ filterPeriodDays }}</div>
+                </div>
+              </ion-col>
+            </ion-row>
+          </ion-grid>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Daily Movement Breakdown -->
+      <ion-card class="movement-card">
+        <ion-card-header>
+          <ion-card-subtitle>Daily Movement Breakdown</ion-card-subtitle>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-accordion-group>
+            <ion-accordion *ngFor="let day of dailyMovements">
+              <ion-item slot="header">
+                <ion-label>
+                  <h2>{{ day.date | date:'MMM dd, yyyy' }}</h2>
+                  <p>Total Moved: {{ day.total_quantity }}</p>
+                </ion-label>
+              </ion-item>
+              
+              <ion-list slot="content">
+                <ion-item *ngFor="let movement of day.movements">
+                  <ion-label>
+                    <h3>{{ movement.product_name }}</h3>
+                    <p>Quantity: {{ movement.quantity }}</p>
+                  </ion-label>
+                </ion-item>
+              </ion-list>
+            </ion-accordion>
+          </ion-accordion-group>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Overall Movement Analytics -->
+      <ion-card class="analytics-card">
+        <ion-card-header>
+          <ion-card-subtitle>Overall Movement Analytics</ion-card-subtitle>
+        </ion-card-header>
+        <ion-card-content>
+          <ion-grid>
+            <ion-row class="header-row">
+              <ion-col size="3">Product</ion-col>
+              <ion-col size="2">Category</ion-col>
+              <ion-col size="2" class="ion-text-center">Total Moved</ion-col>
+              <ion-col size="3" class="ion-text-center">Daily Average</ion-col>
+              <ion-col size="2" class="ion-text-center">Current Stock</ion-col>
+            </ion-row>
+            
+            <ion-row *ngFor="let movement of productMovements" class="data-row">
+              <ion-col size="3">{{ movement.product_name }}</ion-col>
+              <ion-col size="2">{{ movement.category }}</ion-col>
+              <ion-col size="2" class="ion-text-center">{{ movement.total_quantity }}</ion-col>
+              <ion-col size="3" class="ion-text-center">
+                <ion-text [color]="getMovementStatusClass(movement.daily_average)">
+                  {{ movement.daily_average }} per day
+                </ion-text>
+              </ion-col>
+              <ion-col size="2" class="ion-text-center">
+                <ion-text [color]="getStockStatusClass(movement.current_stock)">
+                  {{ movement.current_stock }}
+                </ion-text>
+              </ion-col>
+            </ion-row>
+          </ion-grid>
+        </ion-card-content>
+      </ion-card>
     </ion-card-header>
-    <ion-card-content>
-      <ion-list *ngIf="!error && trackingData.length > 0">
-        <ion-item-group>
-          <ion-item-divider sticky>
-            <ion-label>
-              <ion-grid>
-                <ion-row>
-                  <ion-col size="4">Product</ion-col>
-                  <ion-col size="2" class="ion-text-center">Category</ion-col>
-                  <ion-col size="2" class="ion-text-center">Moved</ion-col>
-                  <ion-col size="2" class="ion-text-center">Current Stock</ion-col>
-                  <ion-col size="2" class="ion-text-center">Date</ion-col>
-                </ion-row>
-              </ion-grid>
-            </ion-label>
-          </ion-item-divider>
-
-          <ion-item *ngFor="let item of trackingData">
-            <ion-label>
-              <ion-grid>
-                <ion-row>
-                  <ion-col size="4">{{ item.product_name }}</ion-col>
-                  <ion-col size="2" class="ion-text-center">{{ item.category }}</ion-col>
-                  <ion-col size="2" class="ion-text-center">
-                    <ion-text color="danger">-{{ item.quantity_out }}</ion-text>
-                  </ion-col>
-                  <ion-col size="2" class="ion-text-center">{{ item.current_stock }}</ion-col>
-                  <ion-col size="2" class="ion-text-center">
-                    {{ item.created_at | date:'short' }}
-                  </ion-col>
-                </ion-row>
-              </ion-grid>
-            </ion-label>
-          </ion-item>
-        </ion-item-group>
-      </ion-list>
-
-      <div class="ion-padding ion-text-center" *ngIf="!error && trackingData.length === 0">
-        <p>No stock movements found</p>
-      </div>
-    </ion-card-content>
   </ion-card>
 </ion-content>
