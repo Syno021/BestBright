@@ -1,5 +1,5 @@
 <ion-content class="ion-padding">
-<div class="cart-container">
+<div class="cart-container" *ngIf="!loading">
   <div class="cart-items" *ngIf="cartItems.length > 0; else emptyCart">
     <div class="cart-item-card" *ngFor="let item of cartItems">
       <div class="image-gallery">
@@ -43,6 +43,10 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <div *ngIf="loading" class="loading-spinner">
+    <ion-spinner></ion-spinner>
   </div>
 
   <ng-template #emptyCart>
@@ -95,7 +99,7 @@
     </div>
 
     <button class="action-button primary-button" (click)="PlaceOrder()">Place Order</button>
-    <button class="action-button secondary-button" (click)="openPaymentModal()">Pay Now</button>
+    <button class="action-button secondary-button" (click)="makePayment()">Pay Now</button>
   </div>
 </div>
 

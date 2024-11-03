@@ -84,11 +84,6 @@
           </div>
 
           <div class="product-actions" *ngIf="product.stock_quantity > 0; else outOfStock">
-            <div class="quantity-controls">
-              <button (click)="decreaseQuantity(product)">-</button>
-              <span>{{ product.quantity }}</span>
-              <button (click)="increaseQuantity(product)">+</button>
-            </div>
             <button class="add-to-cart-btn" (click)="addToCart(product)">
               Add to Cart
             </button>

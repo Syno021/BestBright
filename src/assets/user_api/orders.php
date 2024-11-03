@@ -180,12 +180,48 @@ else if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
         die(json_encode(array("success" => false, "message" => "Order ID is required")));
     }
     
-    $status = isset($data['status']) ? $data['status'] : null;
+    $newStatus = isset($data['status']) ? $data['status'] : null;
     $previousStatus = isset($data['previousStatus']) ? $data['previousStatus'] : null;
     
-    if (!$status) {
+    if (!$newStatus) {
         die(json_encode(array("success" => false, "message" => "Status is required")));
     }
+
+    // Define valid status transitions
+    $validTransitions = array(
+        'pending' => array('payment-received'),
+        'payment-received' => array('order-processed'),
+        'order-processed' => array('shipped'),
+        'shipped' => array('delivered')
+    );
+
+    // Validate status transition
+    if (isset($validTransitions[$previousStatus]) && !in_array($newStatus, $validTransitions[$previousStatus])) {
+        $message = '';
+        switch ($newStatus) {
+            case 'order-processed':
+                if ($previousStatus !== 'payment-received') {
+                    $message = 'Order must be marked as payment-received before processing';
+                }
+                break;
+            case 'shipped':
+                if ($previousStatus !== 'order-processed') {
+                    $message = 'Order must be processed before shipping';
+                }
+                break;
+            case 'delivered':
+                if ($previousStatus !== 'shipped') {
+                    $message = 'Order must be shipped before marking as delivered';
+                }
+                break;
+            default:
+                $message = 'Invalid status transition';
+        }
+        die(json_encode(array("success" => false, "message" => $message)));
+    }
+    
+    // Start transaction
+    $conn->begin_transaction();
     
     // Start transaction
     $conn->begin_transaction();

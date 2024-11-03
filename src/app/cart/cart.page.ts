@@ -28,6 +28,15 @@ interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: UserOptions) => void;
 }
 
+interface User {
+  user_id: number;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+}
+
 interface Product {
   id: any;
   product_id: number;
@@ -74,12 +83,17 @@ export class CartPage implements OnInit {
   savedAddresses: any[] = []; // Fetch this from a service or storage
   userId: string | null = null;
   userEmail: string | null = null;
+  users: User[] = [];
+  currentUser: User | null = null;
+  currentAddress: any = null;
+  selectedAddressId: number | null = null;
 
   subtotal: number = 0;
   discountedSubtotal: number = 0;
   tax: number = 0;
   total: number = 0;
   discountedTotal: number = 0;
+  loading: boolean = false;
   
 
   private cartSubscription: Subscription | undefined;
@@ -94,17 +108,744 @@ export class CartPage implements OnInit {
      private afStorage: AngularFireStorage,
      private loadingController: LoadingController,
      private firestore: AngularFirestore,
-     private modalController: ModalController
+     private modalController: ModalController,
+     private router: Router
   ) {}
 
-  ngOnInit() {
+  async ngOnInit() {
     this.loadPromotions();
-
     this.loadCart();
-    this.getUserId();
+    await this.getUserId();
     this.getUserEmail();
+    this.loadUserDetails();
     this.loadSavedAddresses();
     this.loadPaystackScript();
+  }
+
+  loadUserDetails() {
+    if (this.userId) {
+      this.http.get<User[]>(`http://localhost/user_api/register.php?role=customer`)
+        .subscribe(
+          (users) => {
+            const currentUser = users.find(user => user.user_id.toString() === this.userId);
+            if (currentUser) {
+              this.currentUser = currentUser;
+              console.log('Current user loaded:', this.currentUser);
+            }
+          },
+          (error: HttpErrorResponse) => {
+            console.error('Error fetching user details:', error);
+          }
+        );
+    }
+  }
+
+  loadCart() {
+    this.loading = true; // Add loading state
+    this.cartSubscription = this.cartService.getCart().pipe(
+      map(items => items.map(item => ({
+        ...item,
+        price: this.ensureValidNumber(item.price),
+        quantity: this.ensureValidNumber(item.quantity),
+        originalPrice: this.ensureValidNumber(item.originalPrice || item.price),
+        discountedPrice: this.ensureValidNumber(item.discountedPrice || item.price),
+        hasPromotion: Boolean(item.hasPromotion),
+        promotionName: item.promotionName || '',
+        discountPercentage: this.ensureValidNumber(item.discountPercentage || 0)
+      })))
+    ).subscribe({
+      next: (items) => {
+        this.cartItems = items;
+        console.log('Merged cart items loaded:', this.cartItems);
+        if (this.promotions.length > 0) {
+          this.applyPromotions();
+        }
+        this.loading = false; // Clear loading state
+      },
+      error: (error) => {
+        console.error('Error loading cart:', error);
+        this.showToast('Error loading cart items');
+        this.loading = false; // Clear loading state on error
+      }
+    });
+  }
+
+  async PlaceOrder(): Promise<void> {
+    if (!this.userId || !this.userEmail) {
+      const alert = await this.alertController.create({
+        header: 'Login Required',
+        message: 'Please log in or create an account to place an order.',
+        buttons: [
+          {
+            text: 'Cancel',
+            role: 'cancel'
+          },
+          {
+            text: 'Sign In',
+            handler: () => {
+              // Navigate to signup page
+              this.router.navigate(['/signup'], {
+                queryParams: { returnUrl: '/cart' } // Store return URL to come back after signup
+              });
+            }
+          },
+        ]
+      });
+      await alert.present();
+      return;
+    }
+    try {
+      if (!(await this.validateOrder())) {
+        return;
+      }
+      if (this.cartItems.length === 0) {
+        const alert = await this.alertController.create({
+          header: 'Empty Cart',
+          message: 'Your cart is empty. Add some items before placing an order.',
+          buttons: ['OK']
+        });
+        await alert.present();
+        return;
+      }
+  
+      
+      
+  
+      console.log('Starting order placement process');
+  
+      // Check product quantities
+      const {isValid, invalidItems} = await this.checkProductQuantities();
+      if (!isValid) {
+        let message = 'The following items have insufficient quantity:\n';
+        invalidItems.forEach(item => {
+          message += `${item.name}: ${item.availableQuantity} available\n`;
+        });
+        const alert = await this.alertController.create({
+          header: 'Insufficient Quantity',
+          message: message,
+          buttons: ['OK']
+        });
+        await alert.present();
+        return;
+      }
+  
+      // Update stock quantities
+      try {
+        for (const item of this.cartItems) {
+          const stockResponse = await firstValueFrom(
+            this.http.get<{quantity: number}>(
+              `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+            )
+          );
+          
+          const currentStock = stockResponse.quantity;
+          const newQuantity = currentStock - item.quantity;
+  
+          await firstValueFrom(
+            this.http.put('http://localhost/user_api/update_stock.php', {
+              product_id: item.product_id,
+              quantity: newQuantity
+            })
+          );
+        }
+      } catch (error) {
+        console.error('Error updating stock quantities:', error);
+        this.showToast('Error updating product quantities. Please try again.');
+        return;
+      }
+  
+      // Prepare the order data
+      const orderData = {
+        user_id: this.userId,
+        total_amount: this.total,
+        discounted_amount: this.discountedTotal,
+        order_type: this.deliveryMethod,
+        status: 'pending',
+        items: this.cartItems.map(item => ({
+          ...item,
+          applied_promotion: item.hasPromotion ? {
+            name: item.promotionName,
+            discount_percentage: this.promotions.find(p => p.name === item.promotionName)?.discount_percentage
+          } : null
+        })),
+        created_at: new Date()
+      };
+  
+      // 1. Create order in MySQL first
+      const response = await this.http.post<{ 
+        success: boolean, 
+        message: string,
+        order_id: number
+      }>('http://localhost/user_api/orders.php', orderData).toPromise();
+  
+      if (!response || !response.success || !response.order_id) {
+        throw new Error('Failed to create order in MySQL database');
+      }
+  
+      const mysql_order_id = response.order_id;
+  
+      // 2. Generate PDF
+      const pdfBlob = await this.generateOrderPDF(orderData, mysql_order_id.toString());
+  
+      // 3. Upload PDF to Firebase Storage and get URL
+      const pdfUrl = await this.uploadPDFToFirebase(pdfBlob, mysql_order_id.toString());
+  
+      // 4. Prepare Firestore order data with PDF URL
+      const firestoreOrderData = { 
+        ...orderData, 
+        order_id: mysql_order_id,
+        pdf_url: pdfUrl,
+        created_at: new Date(), // Firestore timestamp
+        updated_at: new Date()
+      };
+  
+      // 5. Create new document in Firestore (using set instead of update)
+      await this.firestore.collection('orders')
+        .doc(mysql_order_id.toString())
+        .set(firestoreOrderData);
+  
+      // 6. Send email with the PDF
+      await this.sendOrderEmail(this.userEmail, pdfBlob, mysql_order_id.toString());
+  
+      // Clear cart and show success message
+      this.cartService.clearAllItems().subscribe({
+        next: () => {
+          console.log('Cart cleared successfully');
+        },
+        error: (error) => {
+          console.error('Error clearing cart:', error);
+          this.showToast('Failed to clear cart. Please try again.');
+        }
+      });
+  
+    await firstValueFrom(this.cartService.clearAllItems());
+    await firstValueFrom(this.cartService.clearCart());
+    
+    this.cartItems = [];
+    this.calculateTotals();
+    
+    const alert = await this.alertController.create({
+      header: 'Order Placed',
+      message: `Your order #${mysql_order_id} for R${this.total.toFixed(2)} has been placed successfully!`,
+      buttons: [{
+        text: 'OK',
+        handler: () => {
+          // Refresh the cart display
+          this.loadCart();
+        }
+      }]
+    });
+    await alert.present();
+
+  } catch (error) {
+    console.error('Error in order placement process:', error);
+    this.showToast('An error occurred while placing your order. Please try again.');
+  }
+}
+
+// Add this helper method if you don't have it already
+private roundToTwo(num: number): number {
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+  switchMainImage(item: any, newImage: string) {
+    const currentMain = item.image_url;
+    item.image_url = newImage;
+    // Update the thumbnails array accordingly
+  }
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+  loadPaystackScript() {
+    if (!this.paystackScriptLoaded) {
+      const script = document.createElement('script');
+      script.src = 'https://js.paystack.co/v1/inline.js';
+      script.async = true;
+      script.onload = () => {
+        this.paystackScriptLoaded = true;
+        console.log('Paystack script loaded');
+      };
+      document.body.appendChild(script);
+    }
+  }
+
+  async makePayment() {
+    if (!this.userId || !this.userEmail) {
+      const alert = await this.alertController.create({
+        header: 'Login Required',
+        message: 'Please log in or create an account to place an order.',
+        buttons: [
+          {
+            text: 'Cancel',
+            role: 'cancel'
+          },
+          {
+            text: 'Sign In',
+            handler: () => {
+              this.router.navigate(['/signup'], {
+                queryParams: { returnUrl: '/cart' }
+              });
+            }
+          },
+        ]
+      });
+      await alert.present();
+      return;
+    }
+    try {
+      if (!this.paystackScriptLoaded) {
+        await this.showToast('Paystack script not loaded yet. Please try again.');
+        return;
+      }
+  
+      if (typeof window.PaystackPop === 'undefined') {
+        await this.showToast('PaystackPop is not defined. Please refresh the page and try again.');
+        return;
+      }
+
+      // Validate order first
+      if (!(await this.validateOrder())) {
+        return;
+      }
+  
+      if (this.cartItems.length === 0) {
+        const alert = await this.alertController.create({
+          header: 'Empty Cart',
+          message: 'Your cart is empty. Add some items before placing an order.',
+          buttons: ['OK']
+        });
+        await alert.present();
+        return;
+      }
+  
+      // Check product quantities first
+      const {isValid, invalidItems} = await this.checkProductQuantities();
+      if (!isValid) {
+        let message = 'The following items have insufficient quantity:\n';
+        invalidItems.forEach(item => {
+          message += `${item.name}: ${item.availableQuantity} available\n`;
+        });
+        const alert = await this.alertController.create({
+          header: 'Insufficient Quantity',
+          message: message,
+          buttons: ['OK']
+        });
+        await alert.present();
+        return;
+      }
+
+      // Update stock quantities
+      try {
+        for (const item of this.cartItems) {
+          const stockResponse = await firstValueFrom(
+            this.http.get<{quantity: number}>(
+              `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+            )
+          );
+          
+          const currentStock = stockResponse.quantity;
+          const newQuantity = currentStock - item.quantity;
+  
+          await firstValueFrom(
+            this.http.put('http://localhost/user_api/update_stock.php', {
+              product_id: item.product_id,
+              quantity: newQuantity
+            })
+          );
+        }
+      } catch (error) {
+        console.error('Error updating stock quantities:', error);
+        this.showToast('Error updating product quantities. Please try again.');
+        return;
+      }
+  
+      // Prepare the order data
+      const orderData = {
+        user_id: this.userId,
+        total_amount: this.total,
+        discounted_amount: this.discountedTotal,
+        order_type: this.deliveryMethod,
+        status: 'online-payment',
+        items: this.cartItems.map(item => ({
+          ...item,
+          applied_promotion: item.hasPromotion ? {
+            name: item.promotionName,
+            discount_percentage: this.promotions.find(p => p.name === item.promotionName)?.discount_percentage
+          } : null
+        })),
+        created_at: new Date()
+      };
+  
+      // Create order in MySQL first to get order_id
+      const response = await this.http.post<{ 
+        success: boolean, 
+        message: string,
+        order_id: number
+      }>('http://localhost/user_api/orders.php', orderData).toPromise();
+  
+      if (!response || !response.success || !response.order_id) {
+        throw new Error('Failed to create order in MySQL database');
+      }
+  
+      const order_id = response.order_id;
+  
+      // Initialize Paystack payment
+      const handler = window.PaystackPop.setup({
+        key: environment.paystackTestPublicKey,
+        email: this.userEmail,
+        amount: Math.round(this.discountedTotal * 100),
+        currency: 'ZAR',
+        ref: `ORDER_${order_id}`,
+        metadata: {
+          order_id: order_id,
+          custom_fields: [
+            {
+              display_name: "Order ID",
+              variable_name: "order_id",
+              value: order_id
+            }
+          ]
+        },
+        onClose: async () => {
+          console.log('Payment window closed');
+          // If payment window is closed, we need to:
+          // 1. Reverse the stock quantity updates
+          try {
+            for (const item of this.cartItems) {
+              const stockResponse = await firstValueFrom(
+                this.http.get<{quantity: number}>(
+                  `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+                )
+              );
+              
+              const currentStock = stockResponse.quantity;
+              const newQuantity = currentStock + item.quantity; // Add back the quantities
+              
+              await firstValueFrom(
+                this.http.put('http://localhost/user_api/update_stock.php', {
+                  product_id: item.product_id,
+                  quantity: newQuantity
+                })
+              );
+            }
+          } catch (error) {
+            console.error('Error reversing stock quantities:', error);
+          }
+          // 2. Delete the pending order
+          await this.http.delete(`http://localhost/user_api/orders.php?order_id=${order_id}`).toPromise();
+        },
+        
+        callback: async (response: any) => {
+          console.log('Payment successful', response);
+          try {
+            await this.verifyTransaction(order_id);
+            await firstValueFrom(this.cartService.clearAllItems());
+            
+            this.cartItems = [];
+            this.calculateTotals();
+            
+            window.location.reload();
+          } catch (error) {
+            // If verification fails, reverse the stock quantity updates
+            try {
+              for (const item of this.cartItems) {
+                const stockResponse = await firstValueFrom(
+                  this.http.get<{quantity: number}>(
+                    `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+                  )
+                );
+                
+                const currentStock = stockResponse.quantity;
+                const newQuantity = currentStock + item.quantity; // Add back the quantities
+                
+                await firstValueFrom(
+                  this.http.put('http://localhost/user_api/update_stock.php', {
+                    product_id: item.product_id,
+                    quantity: newQuantity
+                  })
+                );
+              }
+            } catch (reverseError) {
+              console.error('Error reversing stock quantities:', reverseError);
+            }
+            console.error('Error in payment callback:', error);
+            this.showToast('Error processing payment confirmation. Please contact support.');
+          }
+        },
+        onError: async (error: any) => {
+          console.error('Payment error:', error);
+          // If payment fails, reverse the stock quantity updates
+          try {
+            for (const item of this.cartItems) {
+              const stockResponse = await firstValueFrom(
+                this.http.get<{quantity: number}>(
+                  `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
+                )
+              );
+              
+              const currentStock = stockResponse.quantity;
+              const newQuantity = currentStock + item.quantity; // Add back the quantities
+              
+              await firstValueFrom(
+                this.http.put('http://localhost/user_api/update_stock.php', {
+                  product_id: item.product_id,
+                  quantity: newQuantity
+                })
+              );
+            }
+          } catch (reverseError) {
+            console.error('Error reversing stock quantities:', reverseError);
+          }
+          await this.http.delete(`http://localhost/user_api/orders.php?order_id=${order_id}`).toPromise();
+          await this.showToast(`Payment error: ${error.message || 'Unknown error occurred'}`);
+        }
+      });
+  
+      handler.openIframe();
+  
+    } catch (error) {
+      console.error('Error in payment process:', error);
+      await this.showToast('An error occurred while processing your payment. Please try again.');
+    }
+  }
+  
+  async verifyTransaction(order_id: number) {
+    try {
+      // Verify order with your backend
+      const verificationResponse = await this.http.post<{
+        success: boolean,
+        message: string,
+        data?: any
+      }>('http://localhost/user_api/verify_payment.php', {
+        order_id: order_id
+      }).toPromise();
+  
+      if (verificationResponse?.success) {
+        // Clear cart with proper error handling
+        try {
+          await firstValueFrom(this.cartService.clearAllItems());
+          
+          // Double-check cart is cleared locally
+          this.cartItems = [];
+          this.calculateTotals();
+          
+          await this.showToast('Payment successful! Your order has been placed.');
+          
+          // Navigate to order confirmation page and force reload
+          this.router.navigate(['/orders']).then(() => {
+            window.location.reload();
+          });
+        } catch (error) {
+          console.error('Error clearing cart after payment:', error);
+          this.showToast('Order placed but error clearing cart. Please refresh the page.');
+        }
+      } else {
+        // If verification fails, delete the pending order
+        await this.http.delete(`http://localhost/user_api/orders.php?order_id=${order_id}`).toPromise();
+        await this.showToast('Order verification failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error verifying order:', error);
+      // Delete the pending order if verification fails
+      await this.http.delete(`http://localhost/user_api/orders.php?order_id=${order_id}`).toPromise();
+      await this.showToast('Error verifying order. Please contact support.');
+    }
+  }
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  
+  private async generateOrderPDF(orderData: any, mysql_order_id: string): Promise<Blob> {
+    const pdf = new jsPDF() as jsPDFWithAutoTable;
+    const pageWidth = pdf.internal.pageSize.width;
+
+    // Header
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(20);
+    pdf.text("Invoice", pageWidth / 2, 20, { align: "center" });
+
+    // Business Banking Details (Top Right)
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    pdf.text([
+        "Business name: Best brightnes",
+        "Account number: 0000000000",
+        "Bank: Absa",
+        "Branch code: 1000235"
+    ], pageWidth - 20, 20, { align: "right" });
+
+    // Order Details (adjusted Y positions)
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`Order Number: ${mysql_order_id}`, 20, 35);
+    pdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 43);
+
+    // Customer Details Section (adjusted Y positions)
+    pdf.setFont("helvetica", "bold");
+    pdf.text("Customer Information:", 20, 55);
+    pdf.setFont("helvetica", "normal");
+
+    // Use currentUser details instead of sessionStorage
+    if (this.currentUser) {
+        pdf.text(`Name: ${this.currentUser.first_name} ${this.currentUser.last_name}`, 20, 63);
+        pdf.text(`Email: ${this.currentUser.email}`, 20, 71);
+    } else {
+        pdf.text(`Name: Not Available`, 20, 63);
+        pdf.text(`Email: ${this.userEmail || 'Not Available'}`, 20, 71);
+    }
+
+    // Delivery Address Section (adjusted Y positions)
+    let startY = 83;
+    if (this.deliveryMethod === 'delivery') {
+        const selectedAddress = this.getSelectedAddress();
+        if (selectedAddress) {
+            pdf.setFont("helvetica", "bold");
+            pdf.text("Delivery Address:", 20, startY);
+            pdf.setFont("helvetica", "normal");
+            pdf.text(`${selectedAddress.address_line1}`, 20, startY + 8);
+            if (selectedAddress.address_line2) {
+                pdf.text(`${selectedAddress.address_line2}`, 20, startY + 16);
+                startY += 8;
+            }
+            pdf.text(`${selectedAddress.city}${selectedAddress.province ? ', ' + selectedAddress.province : ''}`, 20, startY + 16);
+            pdf.text(`${selectedAddress.postal_code || ''}`, 20, startY + 24);
+            pdf.text(`${selectedAddress.country}`, 20, startY + 32);
+            startY += 45;
+        } else {
+            pdf.setFont("helvetica", "bold");
+            pdf.text("Delivery Address:", 20, startY);
+            pdf.setFont("helvetica", "normal");
+            pdf.text("No delivery address specified", 20, startY + 8);
+            startY += 20;
+        }
+    }
+
+    // Order Items Table
+    const tableData = this.cartItems.map(item => [
+        item.name,
+        item.quantity,
+        `R${item.price.toFixed(2)}`,
+        item.hasPromotion ? `${item.promotionName} (-${this.getPromotionDiscount(item)}%)` : 'No Promotion',
+        `R${(item.hasPromotion ? item.discountedPrice : item.price).toFixed(2)}`
+    ]);
+
+    // Reduce row height and font size for the table
+    pdf.autoTable({
+        startY: startY,
+        head: [['Item', 'Quantity', 'Unit Price', 'Promotion', 'Final Price']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [66, 66, 66], fontSize: 10 },
+        bodyStyles: { fontSize: 9 },
+        margin: { top: 20, right: 20, bottom: 40, left: 20 },
+        rowPageBreak: 'avoid'
+    });
+
+    // Order Summary (adjusted positioning)
+    const finalY = (pdf as any).lastAutoTable.finalY + 10;
+    pdf.setFontSize(11);
+    pdf.text(`Subtotal: R${this.subtotal.toFixed(2)}`, pageWidth - 60, finalY);
+    pdf.text(`Discount: R${(this.subtotal - this.discountedSubtotal).toFixed(2)}`, pageWidth - 60, finalY + 8);
+    pdf.text(`Tax (15%): R${this.tax.toFixed(2)}`, pageWidth - 60, finalY + 16);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(`Total: R${this.discountedTotal.toFixed(2)}`, pageWidth - 60, finalY + 24);
+
+    return pdf.output('blob');
+}
+  
+  private async uploadPDFToFirebase(pdfBlob: Blob, mysql_order_id: string): Promise<string> {
+    try {
+      // 1. Upload PDF to Storage first
+      const filePath = `orders/${mysql_order_id}/order_${mysql_order_id}.pdf`;
+      const fileRef = this.afStorage.ref(filePath);
+      await fileRef.put(pdfBlob);
+      
+      // 2. Get the download URL
+      const downloadURL = await fileRef.getDownloadURL().toPromise();
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading PDF to Firebase:', error);
+      throw error;
+    }
+  }
+  private getPromotionDiscount(item: any): number {
+    const promotion = this.promotions.find(p => p.name === item.promotionName);
+    return promotion ? promotion.discount_percentage : 0;
+  }
+
+// Updated email function to use MySQL order ID
+async sendOrderEmail(email: string, pdfBlob: Blob, order_id: string): Promise<void> {
+    const loader = await this.loadingController.create({
+        message: 'Sending Email...',
+        cssClass: 'custom-loader-class'
+    });
+    await loader.present();
+
+    const url = "http://localhost/user_api/send_email.php";
+    const subject = `Order Details - Order #${order_id}`;
+    const body = `Please find the attached order details PDF for order #${order_id}.`;
+    
+    const formData = new FormData();
+    formData.append('recipient', email);
+    formData.append('subject', subject);
+    formData.append('body', body);
+    formData.append('pdf', pdfBlob, `Order_${order_id}.pdf`);
+
+    this.http.post(url, formData).subscribe(
+        async (response) => {
+            loader.dismiss();
+            this.showToast('Email sent successfully!');
+        },
+        (error) => {
+            loader.dismiss();
+            console.error('Error sending email:', error);
+            this.showToast('Failed to send email. Please try again.');
+        }
+    );
+}
+
+loadSavedAddresses() {
+  if (this.userId) {
+    this.http.get<any[]>(`http://localhost/user_api/address.php?user_id=${this.userId}`)
+      .pipe(
+        catchError(error => {
+          console.error('Error loading addresses:', error);
+          this.showToast('Failed to load saved addresses');
+          return of([]);
+        })
+      )
+      .subscribe(
+        (addresses) => {
+          console.log('Addresses received:', addresses);
+          this.savedAddresses = addresses;
+          
+          // If there's only one address, select it automatically
+          if (addresses.length === 1) {
+            this.selectAddress(addresses[0].id);
+          }
+        }
+      );
+  }
+}
+
+  selectAddress(addressId: number) {
+    this.selectedAddressId = addressId;
+    this.selectedAddress = this.savedAddresses.find(addr => addr.id === addressId);
+  }
+  getSelectedAddress() {
+    return this.savedAddresses.find(addr => addr.id === this.selectedAddressId);
+  }
+
+  async validateOrder(): Promise<boolean> {
+    if (this.deliveryMethod === 'delivery' && !this.selectedAddressId) {
+      const alert = await this.alertController.create({
+        header: 'Address Required',
+        message: 'Please select a delivery address before proceeding.',
+        buttons: ['OK']
+      });
+      await alert.present();
+      return false;
+    }
+    return true;
   }
 
   ngOnDestroy() {
@@ -117,30 +858,7 @@ export class CartPage implements OnInit {
     return this.cartItems.some(item => item.hasPromotion);
   }
   
-  loadCart() {
-    this.cartSubscription = this.cartService.getCart().subscribe({
-      next: (items) => {
-        this.cartItems = items.map(item => ({
-          ...item,
-          price: this.ensureValidNumber(item.price),
-          quantity: this.ensureValidNumber(item.quantity),
-          originalPrice: this.ensureValidNumber(item.originalPrice || item.price),
-          discountedPrice: this.ensureValidNumber(item.discountedPrice || item.price),
-          hasPromotion: Boolean(item.hasPromotion),
-          promotionName: item.promotionName || '',
-          discountPercentage: this.ensureValidNumber(item.discountPercentage || 0)
-        }));
-        console.log('Cart items loaded:', this.cartItems); // Debug log
-        if (this.promotions.length > 0) {
-          this.applyPromotions();
-        }
-      },
-      error: (error) => {
-        console.error('Error loading cart:', error);
-        this.showToast('Error loading cart items');
-      }
-    });
-  }
+ 
 
   async openPaymentModal() {
     const modal = await this.modalController.create({
@@ -239,73 +957,6 @@ applyPromotions() {
   this.calculateTotals();
 }
 
-// Add this helper method if you don't have it already
-private roundToTwo(num: number): number {
-  return Math.round((num + Number.EPSILON) * 100) / 100;
-}
-  switchMainImage(item: any, newImage: string) {
-    const currentMain = item.image_url;
-    item.image_url = newImage;
-    // Update the thumbnails array accordingly
-  }
-
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  loadPaystackScript() {
-    if (!this.paystackScriptLoaded) {
-      const script = document.createElement('script');
-      script.src = 'https://js.paystack.co/v1/inline.js';
-      script.async = true;
-      script.onload = () => {
-        this.paystackScriptLoaded = true;
-        console.log('Paystack script loaded');
-      };
-      document.body.appendChild(script);
-    }
-  }
-
-  async makePayment() {
-    if (!this.paystackScriptLoaded) {
-      await this.showToast('Paystack script not loaded yet. Please try again.');
-      return;
-    }
-
-    if (typeof window.PaystackPop === 'undefined') {
-      await this.showToast('PaystackPop is not defined. Please refresh the page and try again.');
-      return;
-    }
-
-    const handler = window.PaystackPop.setup({
-      key: environment.paystackTestPublicKey,
-      email: 'customer@email.com',
-      amount: this.discountedSubtotal, // Amount in cents
-      currency: 'ZAR', // South African Rand
-      ref: `YOUR_REFERENCE_${new Date().getTime()}`,
-      onClose: () => {
-        console.log('Payment window closed');
-      },
-      callback: (response: any) => {
-        console.log('Payment successful', response);
-        this.verifyTransaction(response.reference);
-      },
-      onError: async (error: any) => {
-        console.error('Payment error:', error);
-        await this.showToast(`Payment error: ${error.message || 'Unknown error occurred'}`);
-      }
-    });
-
-    handler.openIframe();
-  }
-
-  verifyTransaction(reference: string) {
-    // Here you would typically make an API call to your backend
-    // Your backend would then verify the transaction with Paystack
-    console.log('Verifying transaction with reference:', reference);
-  }
-
-  /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
-  
   getUserId() {
     this.userId = sessionStorage.getItem('userId');
     if (!this.userId) {
@@ -523,24 +1174,6 @@ async enterCustomQuantity(productId: number) {
     }
   }
 
-  loadSavedAddresses() {
-  if (this.userId) {
-    this.http.get<any[]>(`http://localhost/user_api/address.php?user_id=${this.userId}`)
-      .pipe(
-        catchError(error => {
-          console.error('Error loading addresses:', error);
-          this.showToast('Failed to load saved addresses');
-          return of([]);
-        })
-      )
-      .subscribe(
-        (addresses) => {
-          console.log('Addresses received:', addresses);
-          this.savedAddresses = addresses;
-        }
-      );
-  }
-}
   
 async addNewAddress() {
   const alert = await this.alertController.create({
@@ -723,243 +1356,7 @@ private handleError<T>(operation = 'operation', result?: T) {
     return {isValid, invalidItems};
   }
 
-  async PlaceOrder(): Promise<void> {
-    try {
-      if (this.cartItems.length === 0) {
-        const alert = await this.alertController.create({
-          header: 'Empty Cart',
-          message: 'Your cart is empty. Add some items before placing an order.',
-          buttons: ['OK']
-        });
-        await alert.present();
-        return;
-      }
   
-      if (!this.userEmail) {
-        this.showToast('User email not found. Please log in again.');
-        return;
-      }
-  
-      console.log('Starting order placement process');
-  
-      // Check product quantities
-      const {isValid, invalidItems} = await this.checkProductQuantities();
-      if (!isValid) {
-        let message = 'The following items have insufficient quantity:\n';
-        invalidItems.forEach(item => {
-          message += `${item.name}: ${item.availableQuantity} available\n`;
-        });
-        const alert = await this.alertController.create({
-          header: 'Insufficient Quantity',
-          message: message,
-          buttons: ['OK']
-        });
-        await alert.present();
-        return;
-      }
-  
-      // Update stock quantities one by one to ensure proper tracking
-      try {
-        for (const item of this.cartItems) {
-          const stockResponse = await firstValueFrom(
-            this.http.get<{quantity: number}>(
-              `http://localhost/user_api/products.php?check_quantity=1&product_id=${item.product_id}`
-            )
-          );
-          
-          const currentStock = stockResponse.quantity;
-          const newQuantity = currentStock - item.quantity;
-  
-          // Use the PUT endpoint to update stock and track quantity
-          await firstValueFrom(
-            this.http.put('http://localhost/user_api/update_stock.php', {
-              product_id: item.product_id,
-              quantity: newQuantity
-            })
-          );
-        }
-      } catch (error) {
-        console.error('Error updating stock quantities:', error);
-        this.showToast('Error updating product quantities. Please try again.');
-        return;
-      }
-  
-      // Generate PDF
-      const pdf = new jsPDF() as jsPDFWithAutoTable;
-      const pageWidth = pdf.internal.pageSize.width;
-  
-      // Set font
-      pdf.setFont("helvetica", "normal");
-  
-      // Add header
-      pdf.setFontSize(20);
-      pdf.text("Invoice", pageWidth / 2, 20, { align: "center" });
-  
-      // Add order details
-      pdf.setFontSize(12);
-      const orderId = new Date().getTime().toString();
-      pdf.text(`Order ID: ${orderId}`, 20, 40);
-  
-      // Add customer details
-      const customerName = sessionStorage.getItem('userName') || 'N/A';
-      const customerSurname = sessionStorage.getItem('userSurname') || 'N/A';
-      pdf.text(`Name: ${customerName} ${customerSurname}`, 20, 50);
-      pdf.text(`Email: ${this.userEmail}`, 20, 60);
-  
-      // Add delivery address if applicable
-      let yPos = 70;
-      if (this.deliveryMethod === 'delivery' && this.selectedAddress) {
-        pdf.text("Delivery Address:", 20, yPos);
-        yPos += 10;
-        pdf.text(this.selectedAddress.address_line1, 20, yPos);
-        if (this.selectedAddress.address_line2) {
-          yPos += 10;
-          pdf.text(this.selectedAddress.address_line2, 20, yPos);
-        }
-        yPos += 10;
-        pdf.text(`${this.selectedAddress.city}, ${this.selectedAddress.province} ${this.selectedAddress.postal_code}`, 20, yPos);
-        yPos += 10;
-        pdf.text(this.selectedAddress.country, 20, yPos);
-        yPos += 20;
-      } else {
-        yPos += 10;
-      }
-  
-      // Add order items table
-      pdf.setFontSize(14);
-      pdf.text("Order Items", 20, yPos);
-      yPos += 10;
-  
-      const columns = ["Item", "Quantity", "Price", "Total"];
-      const data = this.cartItems.map(item => [
-        item.name,
-        item.quantity.toString(),
-        `R${item.price.toFixed(2)}`,
-        `R${(item.price * item.quantity).toFixed(2)}`
-      ]);
-  
-      pdf.autoTable({
-        head: [columns],
-        body: data,
-        startY: yPos,
-        theme: 'striped',
-        headStyles: { fillColor: [66, 66, 66] },
-        margin: { top: 20 },
-      });
-  
-      yPos = (pdf as any).lastAutoTable.finalY + 20;
-  
-      // Add price details
-      pdf.setFontSize(12);
-      pdf.text(`Subtotal: R${this.subtotal.toFixed(2)}`, pageWidth - 70, yPos);
-      yPos += 10;
-      pdf.text(`Discounted Subtotal: R${this.discountedSubtotal.toFixed(2)}`, pageWidth - 70, yPos);
-      yPos += 10;
-      pdf.text(`Tax (15%): R${this.tax.toFixed(2)}`, pageWidth - 70, yPos);
-      yPos += 10;
-      pdf.setFontSize(14);
-      pdf.text(`Total: R${this.discountedTotal.toFixed(2)}`, pageWidth - 70, yPos);
-  
-      console.log('PDF generated');
-  
-      // Save PDF to a Blob
-      const pdfBlob = pdf.output('blob');
-  
-      // Prepare the order data
-      const orderData = {
-        user_id: this.userId,
-        total_amount: this.total,
-        discounted_amount: this.discountedTotal,
-        order_type: this.deliveryMethod,
-        status: 'pending',
-        items: this.cartItems.map(item => ({
-          ...item,
-          applied_promotion: item.hasPromotion ? {
-            name: item.promotionName,
-            discount_percentage: this.promotions.find(p => p.name === item.promotionName)?.discount_percentage
-          } : null
-        })),
-        created_at: new Date()
-      };
-  
-      console.log('Order data prepared:', JSON.stringify(orderData, null, 2));
-  
-      // Send the email with PDF Blob
-      await this.sendOrderEmail(this.userEmail, pdfBlob);
-  
-      // Send order data to server
-      const response = await this.http.post<{ success: boolean, message: string }>(
-        'http://localhost/user_api/orders.php',
-        orderData
-      ).toPromise();
-  
-      if (response && response.success) {
-        const firestoreOrderId = new Date().getTime().toString();
-        const firestoreOrderData = { ...orderData, firestore_order_id: firestoreOrderId };
-        await this.firestore.collection('orders').doc(firestoreOrderId).set(firestoreOrderData);
-  
-        this.cartService.clearAllItems().subscribe({
-          next: () => {
-            console.log('Cart cleared successfully');
-          },
-          error: (error) => {
-            console.error('Error clearing cart:', error);
-            this.showToast('Failed to clear cart. Please try again.');
-          }
-        });
-  
-  
-        const alert = await this.alertController.create({
-          header: 'Order Placed',
-          message: `Your order for R${this.total.toFixed(2)} has been placed successfully!`,
-          buttons: ['OK']
-        });
-        await alert.present();
-        this.cartService.clearCart();
-        this.cartItems = [];
-        this.calculateTotals();
-      } else {
-        console.error('Invalid server response:', response);
-        throw new Error('Server response indicates failure or missing order_id');
-      }
-    } catch (error) {
-      console.error('Error in order placement process:', error);
-      this.showToast('An error occurred while placing your order. Please try again.');
-    }
-  }
-
-
-// Function to send email with PDF order details
-async sendOrderEmail(email: string, pdfBlob: Blob): Promise<void> {
-    const loader = await this.loadingController.create({
-        message: 'Sending Email...',
-        cssClass: 'custom-loader-class'
-    });
-    await loader.present();
-
-    const url = "http://localhost/user_api/send_email.php";
-    const subject = "Order Details";
-    const body = "Please find the attached order details PDF.";
-    
-    // Create FormData to send as POST request
-    const formData = new FormData();
-    formData.append('recipient', email);
-    formData.append('subject', subject);
-    formData.append('body', body);
-    formData.append('pdf', pdfBlob, `Order_${new Date().getTime()}.pdf`); // Attach the PDF blob
-
-    this.http.post(url, formData).subscribe(
-        async (response) => {
-            loader.dismiss();
-            this.showToast('Email sent successfully!');
-        },
-        (error) => {
-            loader.dismiss();
-            console.error('Error sending email:', error);
-            this.showToast('Failed to send email. Please try again.');
-        }
-    );
-}
 
   
 }

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
-import { catchError, map, mergeMap, switchMap, tap } from 'rxjs/operators';
+import { catchError, finalize, map, mergeMap, switchMap, tap } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export interface CartItem {
@@ -36,6 +36,8 @@ export class CartService {
   private cartItems: CartItem[] = [];
   private cartItemsSubject = new BehaviorSubject<CartItem[]>([]);
   private readonly LOCAL_CART_KEY = 'localCart';
+  private readonly SYNCED_ITEMS_KEY = 'syncedCartItems';
+  private initialized = false;
 
   constructor(private http: HttpClient) {
     //this.loadCartFromServer();
@@ -48,11 +50,72 @@ export class CartService {
 
   private initializeCart() {
     const userId = this.getUserId();
-    if (userId) {
-      this.loadCartFromServer();
-    } else {
-      this.loadCartFromLocal();
+    
+    // Load persisted items first
+    this.loadPersistedItems();
+    
+    if (userId && !this.initialized) {
+      this.initialized = true;
+      this.loadCartFromServer().subscribe({
+        next: (serverItems) => {
+          const localItems = this.getLocalCart();
+          const syncedItems = this.getSyncedItems();
+          const allLocalItems = this.mergeCartItems(localItems, syncedItems);
+          const mergedCart = this.mergeCartItems(allLocalItems, serverItems);
+          
+          // Only update if there are items to merge
+          if (mergedCart.length > 0) {
+            this.cartItems = mergedCart;
+            this.cartItemsSubject.next(this.cartItems);
+            this.persistItems();
+            
+            // Sync to server if needed
+            if (localItems.length > 0) {
+              this.syncLocalCartToServer(userId).subscribe({
+                next: () => {
+                  console.log('Cart synced successfully');
+                  this.updateSyncedItems(this.cartItems);
+                  this.persistItems();
+                },
+                error: (error) => console.error('Error syncing cart:', error)
+              });
+            }
+          }
+        },
+        error: (error) => console.error('Error loading cart from server:', error)
+      });
     }
+  }
+
+  private persistItems() {
+    localStorage.setItem(this.LOCAL_CART_KEY, JSON.stringify(this.cartItems));
+    localStorage.setItem(this.SYNCED_ITEMS_KEY, JSON.stringify(this.cartItems));
+  }
+
+  // New method to load persisted items
+  private loadPersistedItems() {
+    const persistedItems = localStorage.getItem(this.LOCAL_CART_KEY);
+    if (persistedItems) {
+      this.cartItems = JSON.parse(persistedItems);
+      this.cartItemsSubject.next(this.cartItems);
+    }
+  }
+
+  private loadSyncedItems() {
+    const syncedItems = this.getSyncedItems();
+    if (syncedItems.length > 0) {
+      this.cartItems = this.mergeCartItems(this.cartItems, syncedItems);
+      this.cartItemsSubject.next(this.cartItems);
+    }
+  }
+
+  private getSyncedItems(): CartItem[] {
+    const syncedItems = localStorage.getItem(this.SYNCED_ITEMS_KEY);
+    return syncedItems ? JSON.parse(syncedItems) : [];
+  }
+
+  private updateSyncedItems(items: CartItem[]) {
+    localStorage.setItem(this.SYNCED_ITEMS_KEY, JSON.stringify(items));
   }
 
   private loadCartFromLocal() {
@@ -63,13 +126,13 @@ export class CartService {
     }
   }
 
-  private loadCartFromServer() {
+  private loadCartFromServer(): Observable<CartItem[]> {
     const userId = this.getUserId();
-    if (!userId) return;
+    if (!userId) return of([]);
 
     const params = new HttpParams().set('user_id', userId);
 
-    this.http.get<any>(this.apiUrl, { params }).pipe(
+    return this.http.get<any>(this.apiUrl, { params }).pipe(
       map(response => {
         if (response && response.data && Array.isArray(response.data)) {
           return response.data.map((item: any) => ({
@@ -88,15 +151,36 @@ export class CartService {
         return [];
       }),
       catchError(this.handleError)
-    ).subscribe({
-      next: (items: CartItem[]) => {
-        this.cartItems = items;
-        this.cartItemsSubject.next(this.cartItems);
-      },
-      error: (error) => {
-        console.error('Error loading cart from server:', error);
+    );
+  }
+
+  private mergeCartItems(localItems: CartItem[], serverItems: CartItem[]): CartItem[] {
+    const mergedCart: { [key: number]: CartItem } = {};
+    
+    // First, add all server items to the merged cart
+    serverItems.forEach(item => {
+      mergedCart[item.product_id] = { ...item };
+    });
+    
+    // Then merge local items, keeping higher quantities and local promotion data if not in server
+    localItems.forEach(localItem => {
+      if (mergedCart[localItem.product_id]) {
+        const serverItem = mergedCart[localItem.product_id];
+        mergedCart[localItem.product_id] = {
+          ...serverItem,
+          quantity: Math.max(serverItem.quantity, localItem.quantity),
+          hasPromotion: serverItem.hasPromotion || localItem.hasPromotion,
+          promotionName: serverItem.promotionName || localItem.promotionName,
+          discountedPrice: serverItem.discountedPrice || localItem.discountedPrice,
+          originalPrice: serverItem.originalPrice || localItem.originalPrice,
+          discountPercentage: serverItem.discountPercentage || localItem.discountPercentage
+        };
+      } else {
+        mergedCart[localItem.product_id] = { ...localItem };
       }
     });
+    
+    return Object.values(mergedCart);
   }
 
   private loadCartFromStorage() {
@@ -115,8 +199,7 @@ export class CartService {
       discountedPrice: product.discountedPrice || product.price,
       hasPromotion: product.hasPromotion || false,
       promotionName: product.promotionName || '',
-      discountPercentage: product.discountPercentage || 0,
-      price: product.price  // Changed: Now using original price instead of discounted price
+      discountPercentage: product.discountPercentage || 0
     };
   
     if (userId) {
@@ -136,7 +219,6 @@ export class CartService {
           const existingItem = this.cartItems.find(item => item.product_id === cartItem.product_id);
           if (existingItem) {
             existingItem.quantity += 1;
-            // Update promotion details for existing item
             existingItem.hasPromotion = cartItem.hasPromotion;
             existingItem.promotionName = cartItem.promotionName;
             existingItem.discountedPrice = cartItem.discountedPrice;
@@ -146,6 +228,7 @@ export class CartService {
             this.cartItems.push({ ...cartItem, quantity: 1 });
           }
           this.cartItemsSubject.next(this.cartItems);
+          this.persistItems();
         }),
         catchError(this.handleError)
       );
@@ -153,7 +236,6 @@ export class CartService {
       const existingItem = this.cartItems.find(item => item.product_id === cartItem.product_id);
       if (existingItem) {
         existingItem.quantity += 1;
-        // Update promotion details for existing item
         existingItem.hasPromotion = cartItem.hasPromotion;
         existingItem.promotionName = cartItem.promotionName;
         existingItem.discountedPrice = cartItem.discountedPrice;
@@ -162,29 +244,7 @@ export class CartService {
       } else {
         this.cartItems.push({ ...cartItem, quantity: 1 });
       }
-      this.updateLocalCart();
-      return of({ success: true });
-    }
-  }
-
-  removeFromCart(productId: number): Observable<any> {
-    const userId = this.getUserId();
-
-    if (userId) {
-      const params = new HttpParams()
-        .set('user_id', userId)
-        .set('product_id', productId.toString());
-
-      return this.http.delete(this.apiUrl, { params }).pipe(
-        tap(() => {
-          this.cartItems = this.cartItems.filter(item => item.product_id !== productId);
-          this.cartItemsSubject.next(this.cartItems);
-        }),
-        catchError(this.handleError)
-      );
-    } else {
-      this.cartItems = this.cartItems.filter(item => item.product_id !== productId);
-      this.updateLocalCart();
+      this.persistItems();
       return of({ success: true });
     }
   }
@@ -206,6 +266,7 @@ export class CartService {
             item.quantity = quantity;
           }
           this.cartItemsSubject.next(this.cartItems);
+          this.persistItems();
         }),
         catchError(this.handleError)
       );
@@ -214,7 +275,7 @@ export class CartService {
       if (item) {
         item.quantity = quantity;
       }
-      this.updateLocalCart();
+      this.persistItems();
       return of({ success: true });
     }
   }
@@ -222,32 +283,65 @@ export class CartService {
   getCart(): Observable<CartItem[]> {
     const userId = this.getUserId();
     
-    if (userId) {
-      const params = new HttpParams().set('user_id', userId);
-      
-      return this.http.get<any>(this.apiUrl, { params }).pipe(
-        map(response => {
-          if (response && response.data && Array.isArray(response.data)) {
-            return response.data.map((item: any) => ({
-              product_id: parseInt(item.product_id, 10),
-              name: item.name || 'Unknown Product',
-              price: parseFloat(item.price || '0'),
-              originalPrice: parseFloat(item.original_price || item.price || '0'),
-              discountedPrice: parseFloat(item.discounted_price || item.price || '0'),
-              quantity: parseInt(item.quantity, 10),
-              image_url: item.image_url || '',
-              hasPromotion: item.has_promotion === '1' || item.has_promotion === true,
-              promotionName: item.promotion_name || '',
-              discountPercentage: parseFloat(item.discount_percentage || '0')
-            }));
-          }
-          return [];
-        }),
-        catchError(this.handleError)
-      );
-    } else {
-      return of(this.cartItems);
+    if (!userId) {
+      const localItems = this.getLocalCart();
+      const syncedItems = this.getSyncedItems();
+      const mergedItems = this.mergeCartItems(localItems, syncedItems);
+      return of(mergedItems);
     }
+
+    return this.http.get<any>(this.apiUrl, { params: new HttpParams().set('user_id', userId) }).pipe(
+      map(response => {
+        if (response?.data && Array.isArray(response.data)) {
+          const serverItems = response.data.map(this.mapServerItem);
+          const localItems = this.getLocalCart();
+          const syncedItems = this.getSyncedItems();
+          const allLocalItems = this.mergeCartItems(localItems, syncedItems);
+          const mergedItems = this.mergeCartItems(allLocalItems, serverItems);
+          
+          // Update internal state
+          this.cartItems = mergedItems;
+          this.cartItemsSubject.next(mergedItems);
+          
+          // If there are local items, sync to server
+          if (localItems.length > 0) {
+            this.syncLocalCartToServer(userId).subscribe({
+              next: () => {
+                this.updateSyncedItems(mergedItems);
+                localStorage.removeItem(this.LOCAL_CART_KEY); // Clear local cart after successful sync
+              }
+            });
+          }
+          
+          return mergedItems;
+        }
+        return this.mergeCartItems(this.getLocalCart(), this.getSyncedItems());
+      }),
+      catchError(error => {
+        console.error('Error fetching server cart:', error);
+        return of(this.mergeCartItems(this.getLocalCart(), this.getSyncedItems()));
+      })
+    );
+  }
+
+  private mapServerItem(item: any): CartItem {
+    return {
+      product_id: parseInt(item.product_id, 10),
+      name: item.name || 'Unknown Product',
+      price: parseFloat(item.price || '0'),
+      originalPrice: parseFloat(item.original_price || item.price || '0'),
+      discountedPrice: parseFloat(item.discounted_price || item.price || '0'),
+      quantity: parseInt(item.quantity, 10),
+      image_url: item.image_url || '',
+      hasPromotion: item.has_promotion === '1' || item.has_promotion === true,
+      promotionName: item.promotion_name || '',
+      discountPercentage: parseFloat(item.discount_percentage || '0')
+    };
+  }
+
+  private getLocalCart(): CartItem[] {
+    const savedCart = localStorage.getItem(this.LOCAL_CART_KEY);
+    return savedCart ? JSON.parse(savedCart) : [];
   }
   
   syncLocalCartToServer(userId: string): Observable<any> {
@@ -255,22 +349,26 @@ export class CartService {
       return of({ success: true });
     }
 
-    // Create observables for each local item to be added to server
+    // Create observables for each cart item to be synced
     const syncRequests = this.cartItems.map(item => {
       const payload = {
         user_id: userId,
         product_id: item.product_id,
-        quantity: item.quantity
+        quantity: item.quantity,
+        original_price: item.originalPrice,
+        discounted_price: item.discountedPrice,
+        has_promotion: item.hasPromotion ? 1 : 0,
+        promotion_name: item.promotionName,
+        discount_percentage: item.discountPercentage
       };
       return this.http.post(this.apiUrl, payload);
     });
 
-    // Execute all requests and then reload the cart
+    // Execute all requests in parallel
     return of(syncRequests).pipe(
       mergeMap(requests => Promise.all(requests)),
       tap(() => {
         localStorage.removeItem(this.LOCAL_CART_KEY);
-        this.loadCartFromServer();
       }),
       catchError(this.handleError)
     );
@@ -301,46 +399,103 @@ export class CartService {
   clearCart(): Observable<any> {
     const userId = this.getUserId();
 
+    // Create a function to clear local state
+    const clearLocalState = () => {
+      this.cartItems = [];
+      this.cartItemsSubject.next([]);
+      localStorage.removeItem(this.SYNCED_ITEMS_KEY);
+      localStorage.removeItem(this.LOCAL_CART_KEY);
+    };
+
     if (userId) {
       const params = new HttpParams()
         .set('user_id', userId)
         .set('clear_all', 'true');
 
       return this.http.delete(this.apiUrl, { params }).pipe(
-        tap(() => {
-          this.cartItems = [];
-          this.cartItemsSubject.next(this.cartItems);
-        }),
-        catchError(this.handleError)
+        tap(() => clearLocalState()),
+        finalize(() => clearLocalState()), // Ensure local state is cleared even if request fails
+        catchError(error => {
+          console.error('Error clearing cart:', error);
+          // Still clear local state even if server request fails
+          clearLocalState();
+          return throwError(() => error);
+        })
       );
     } else {
-      this.cartItems = [];
-      this.updateLocalCart();
+      clearLocalState();
       return of({ success: true });
     }
   }
 
   private updateLocalCart() {
-    this.cartItemsSubject.next(this.cartItems);
     localStorage.setItem(this.LOCAL_CART_KEY, JSON.stringify(this.cartItems));
+    this.cartItemsSubject.next(this.cartItems);
   }
 
   clearAllItems(): Observable<any> {
     const userId = this.getUserId();
     if (!userId) {
-      return throwError(() => new Error('User not logged in'));
+      // Clear local storage and state even if user is not logged in
+      this.cartItems = [];
+      this.cartItemsSubject.next([]);
+      localStorage.removeItem(this.SYNCED_ITEMS_KEY);
+      localStorage.removeItem(this.LOCAL_CART_KEY);
+      return of({ success: true });
     }
 
     const params = new HttpParams()
       .set('user_id', userId)
-      .set('clear_all', 'true');  // Add a parameter to indicate clearing all items
+      .set('clear_all', 'true');
 
     return this.http.delete(this.apiUrl, { params }).pipe(
       tap(() => {
+        // Clear both local storage and state
+        this.cartItems = [];
         this.cartItemsSubject.next([]);
+        localStorage.removeItem(this.SYNCED_ITEMS_KEY);
+        localStorage.removeItem(this.LOCAL_CART_KEY);
       }),
-      catchError(this.handleError)
+      finalize(() => {
+        // Ensure local state is cleared even if request fails
+        this.cartItems = [];
+        this.cartItemsSubject.next([]);
+        localStorage.removeItem(this.SYNCED_ITEMS_KEY);
+        localStorage.removeItem(this.LOCAL_CART_KEY);
+      }),
+      catchError(error => {
+        console.error('Error clearing all items:', error);
+        // Still clear local state even if server request fails
+        this.cartItems = [];
+        this.cartItemsSubject.next([]);
+        localStorage.removeItem(this.SYNCED_ITEMS_KEY);
+        localStorage.removeItem(this.LOCAL_CART_KEY);
+        return throwError(() => error);
+      })
     );
+  }
+
+  removeFromCart(productId: number): Observable<any> {
+    const userId = this.getUserId();
+
+    if (userId) {
+      const params = new HttpParams()
+        .set('user_id', userId)
+        .set('product_id', productId.toString());
+
+      return this.http.delete(this.apiUrl, { params }).pipe(
+        tap(() => {
+          this.cartItems = this.cartItems.filter(item => item.product_id !== productId);
+          this.cartItemsSubject.next(this.cartItems);
+          this.persistItems();
+        }),
+        catchError(this.handleError)
+      );
+    } else {
+      this.cartItems = this.cartItems.filter(item => item.product_id !== productId);
+      this.persistItems();
+      return of({ success: true });
+    }
   }
 
   private updateCart() {
