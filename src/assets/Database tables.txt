@@ -171,13 +171,20 @@ CREATE TABLE ORDER_STATUS_HISTORY (
     FOREIGN KEY (order_id) REFERENCES ORDERS(order_id)
 );
 
-CREATE TABLE track_product_quantity (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS track_product_movements (
+    movement_id INT PRIMARY KEY AUTO_INCREMENT,
     product_id INT NOT NULL,
-    quantity_out INT NOT NULL DEFAULT 0,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    quantity_moved INT NOT NULL,
+    movement_type ENUM('IN', 'OUT') NOT NULL,
+    movement_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
+
+-- Create indexes for better query performance
+CREATE INDEX idx_product_movement ON track_product_movements(product_id, movement_date);
+CREATE INDEX idx_movement_date ON track_product_movements(movement_date);
 
 CREATE TABLE ORDER_STATUS_HISTORY (
     history_id INT PRIMARY KEY AUTO_INCREMENT,

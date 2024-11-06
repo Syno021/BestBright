@@ -12,7 +12,8 @@
       <ion-grid>
         <ion-row>
           <ion-col size-md="6" size-lg="4" *ngFor="let promo of promotions">
-            <ion-card class="promo-card" (click)="openPromotionProductsModal(promo)">
+            <ion-card class="promo-card" (click)="openPromotionProductsModal(promo)" 
+                      [ngStyle]="{'background-image': 'url(' + promo.image_url + ')', 'background-size': 'cover', 'background-position': 'center'}">
               <ion-card-header>
                 <ion-card-subtitle>{{ promo.discount_percentage }}% OFF</ion-card-subtitle>
                 <ion-card-title>{{ promo.name }}</ion-card-title>
@@ -32,7 +33,7 @@
         </ion-row>
       </ion-grid>
     </div>
-  </div>
+  </div>  
 </ion-content>
 
 <ion-modal #promotionProductsModal class="custom-modal">

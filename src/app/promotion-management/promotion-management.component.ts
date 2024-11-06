@@ -2,6 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { ToastController } from '@ionic/angular';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { AngularFireStorage } from '@angular/fire/compat/storage';
+import { AngularFirestore } from '@angular/fire/compat/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 interface Promotion {
   promotion_id?: number;
@@ -12,6 +15,7 @@ interface Promotion {
   end_date: string;
   product_ids: number[];
   product_names: string[];
+  image_url?: string;
 }
 
 interface Product {
@@ -30,11 +34,14 @@ export class PromotionManagementComponent implements OnInit {
   promotionForm: FormGroup;
   editMode = false;
   currentPromotionId?: number;
+  selectedFile: File | null = null;
 
   constructor(
     private http: HttpClient,
     private fb: FormBuilder,
-    private toastController: ToastController
+    private toastController: ToastController,
+    private firestore: AngularFirestore,
+    private storage: AngularFireStorage
   ) {
     this.promotionForm = this.fb.group({
       name: ['', Validators.required],
@@ -42,13 +49,18 @@ export class PromotionManagementComponent implements OnInit {
       discount_percentage: ['', [Validators.required, Validators.min(0), Validators.max(100)]],
       start_date: ['', Validators.required],
       end_date: ['', Validators.required],
-      product_ids: [[], Validators.required]
+      product_ids: [[], Validators.required],
+      image_url: ['']
     });
   }
 
   ngOnInit() {
     this.loadProducts();
     this.loadPromotions();
+  }
+
+  onFileSelected(event: any) {
+    this.selectedFile = event.target.files[0];
   }
 
   async showToast(message: string, color: string) {
@@ -58,6 +70,27 @@ export class PromotionManagementComponent implements OnInit {
       color
     });
     toast.present();
+  }
+
+  async uploadImage(): Promise<string> {
+    if (!this.selectedFile) {
+      return '';
+    }
+
+    try {
+      const storage = getStorage();
+      const storageRef = ref(storage, `promotions/${Date.now()}_${this.selectedFile.name}`);
+      await uploadBytes(storageRef, this.selectedFile);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      // Store URL in localStorage as fallback
+      localStorage.setItem(`promotion_image_${this.currentPromotionId || 'new'}`, downloadURL);
+      
+      return downloadURL;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
+    }
   }
 
   loadProducts() {
@@ -84,46 +117,53 @@ export class PromotionManagementComponent implements OnInit {
       );
   }
 
-  onSubmit() {
+  async onSubmit() {
     if (this.promotionForm.valid) {
-      const promotion = this.promotionForm.value;
-      
-      // Log the promotion data being sent
-      console.log('Submitting promotion data:', JSON.stringify(promotion, null, 2));
+      try {
+        let imageUrl = '';
+        if (this.selectedFile) {
+          imageUrl = await this.uploadImage();
+        }
 
-      if (this.editMode && this.currentPromotionId) {
-        this.http.put(`http://localhost/user_api/promotions.php?id=${this.currentPromotionId}`, promotion)
-          .subscribe(
-            (response) => {
-              console.log('Update response:', response);
-              this.loadPromotions();
-              this.resetForm();
-              this.showToast('Promotion updated successfully.', 'success');
-            },
-            (error: HttpErrorResponse) => {
-              console.error('Update error:', error);
-              this.handleError(error);
-            }
-          );
-      } else {
-        this.http.post('http://localhost/user_api/promotions.php', promotion)
-          .subscribe(
-            (response) => {
-              console.log('Create response:', response);
-              this.loadPromotions();
-              this.resetForm();
-              this.showToast('Promotion added successfully.', 'success');
-            },
-            (error: HttpErrorResponse) => {
-              console.error('Create error:', error);
-              this.handleError(error);
-            }
-          );
+        const promotion = {
+          ...this.promotionForm.value,
+          image_url: imageUrl || this.promotionForm.value.image_url
+        };
+
+        if (this.editMode && this.currentPromotionId) {
+          this.http.put(`http://localhost/user_api/promotions.php?id=${this.currentPromotionId}`, promotion)
+            .subscribe(
+              (response) => {
+                this.loadPromotions();
+                this.resetForm();
+                this.showToast('Promotion updated successfully.', 'success');
+              },
+              this.handleError.bind(this)
+            );
+        } else {
+          this.http.post('http://localhost/user_api/promotions.php', promotion)
+            .subscribe(
+              (response) => {
+                this.loadPromotions();
+                this.resetForm();
+                this.showToast('Promotion added successfully.', 'success');
+              },
+              this.handleError.bind(this)
+            );
+        }
+      } catch (error) {
+        this.handleError(error as HttpErrorResponse);
       }
     } else {
-      console.warn('Form is invalid:', this.promotionForm.errors);
       this.showToast('Please fill in all required fields correctly.', 'warning');
     }
+  }
+
+  getImageUrl(promotion: Promotion): string {
+    // Try to get image from promotion first, then fallback to localStorage
+    return promotion.image_url || 
+           localStorage.getItem(`promotion_image_${promotion.promotion_id}`) || 
+           'assets/default-promotion.jpg';
   }
 
   private handleError(error: HttpErrorResponse) {

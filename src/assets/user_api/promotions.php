@@ -27,7 +27,6 @@ try {
     if ($conn->connect_error) {
         throw new Exception("Connection failed: " . $conn->connect_error);
     }
-    
 
     $requestMethod = $_SERVER['REQUEST_METHOD'];
 
@@ -68,106 +67,83 @@ try {
             echo json_encode($promotions);
             break;
 
-        case 'GET':
-            // Get all promotions
-            $sql = "SELECT p.*, GROUP_CONCAT(pp.product_id) as product_ids, 
-                    GROUP_CONCAT(pr.name) as product_names 
-                    FROM promotions p 
-                    LEFT JOIN promotion_products pp ON p.promotion_id = pp.promotion_id
-                    LEFT JOIN products pr ON pp.product_id = pr.product_id
-                    GROUP BY p.promotion_id";
-            $result = $conn->query($sql);
-            
-            if (!$result) {
-                throw new Exception("Error executing query: " . $conn->error);
-            }
-            
-            $promotions = [];
-            while($row = $result->fetch_assoc()) {
-                $row['product_ids'] = $row['product_ids'] ? explode(',', $row['product_ids']) : [];
-                $row['product_names'] = $row['product_names'] ? explode(',', $row['product_names']) : [];
-                $promotions[] = $row;
-            }
-            echo json_encode($promotions);
-            break;
-
         case 'POST':
             $postdata = file_get_contents("php://input");
-    if (!$postdata) {
-        throw new Exception("No data received");
-    }
-
-    $request = json_decode($postdata);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        throw new Exception("Invalid JSON data received");
-    }
-
-    // Validate required fields
-    if (!isset($request->product_ids) || !isset($request->name) || 
-        !isset($request->discount_percentage) || !isset($request->start_date) || 
-        !isset($request->end_date)) {
-        throw new Exception("Missing required fields");
-    }
-
-    $name = mysqli_real_escape_string($conn, trim($request->name));
-    $description = isset($request->description) ? 
-                  mysqli_real_escape_string($conn, trim($request->description)) : '';
-    $discount_percentage = (float)$request->discount_percentage;
-    $start_date = mysqli_real_escape_string($conn, $request->start_date);
-    $end_date = mysqli_real_escape_string($conn, $request->end_date);
-
-    $conn->begin_transaction();
-
-    try {
-        // Insert promotion
-        $sql = "INSERT INTO promotions (name, description, discount_percentage, start_date, end_date) 
-                VALUES (?, ?, ?, ?, ?)";
-        
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-
-        $stmt->bind_param("ssdss", $name, $description, $discount_percentage, $start_date, $end_date);
-        
-        if (!$stmt->execute()) {
-            throw new Exception("Execute failed: " . $stmt->error);
-        }
-
-        $promotion_id = $conn->insert_id;
-
-        $stmt->close();
-
-        // Insert product associations
-        $sql = "INSERT INTO promotion_products (promotion_id, product_id) VALUES (?, ?)";
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
-            throw new Exception("Prepare failed: " . $conn->error);
-        }
-
-        foreach ($request->product_ids as $product_id) {
-            $stmt->bind_param("ii", $promotion_id, $product_id);
-            if (!$stmt->execute()) {
-                throw new Exception("Execute failed: " . $stmt->error);
+            if (!$postdata) {
+                throw new Exception("No data received");
             }
-        }
 
-        $stmt->close();
+            $request = json_decode($postdata);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception("Invalid JSON data received");
+            }
 
-        $conn->commit();
+            // Validate required fields
+            if (!isset($request->product_ids) || !isset($request->name) || 
+                !isset($request->discount_percentage) || !isset($request->start_date) || 
+                !isset($request->end_date) || !isset($request->image_url)) {
+                throw new Exception("Missing required fields");
+            }
 
-        echo json_encode([
-            'status' => 'success',
-            'message' => 'Promotion added successfully',
-            'id' => $promotion_id
-        ]);
-    } catch (Exception $e) {
-        $conn->rollback();
-        throw $e;
-    }
-    
-    break;
+            $name = mysqli_real_escape_string($conn, trim($request->name));
+            $description = isset($request->description) ? 
+                          mysqli_real_escape_string($conn, trim($request->description)) : '';
+            $discount_percentage = (float)$request->discount_percentage;
+            $start_date = mysqli_real_escape_string($conn, $request->start_date);
+            $end_date = mysqli_real_escape_string($conn, $request->end_date);
+            $image_url = mysqli_real_escape_string($conn, $request->image_url);
 
+            $conn->begin_transaction();
+
+            try {
+                // Insert promotion
+                $sql = "INSERT INTO promotions (name, description, discount_percentage, start_date, end_date, image_url) 
+                        VALUES (?, ?, ?, ?, ?, ?)";
+                
+                $stmt = $conn->prepare($sql);
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+
+                $stmt->bind_param("ssdsss", $name, $description, $discount_percentage, $start_date, $end_date, $image_url);
+                
+                if (!$stmt->execute()) {
+                    throw new Exception("Execute failed: " . $stmt->error);
+                }
+
+                $promotion_id = $conn->insert_id;
+
+                $stmt->close();
+
+                // Insert product associations
+                $sql = "INSERT INTO promotion_products (promotion_id, product_id) VALUES (?, ?)";
+                $stmt = $conn->prepare($sql);
+                if (!$stmt) {
+                    throw new Exception("Prepare failed: " . $conn->error);
+                }
+
+                foreach ($request->product_ids as $product_id) {
+                    $stmt->bind_param("ii", $promotion_id, $product_id);
+                    if (!$stmt->execute()) {
+                        throw new Exception("Execute failed: " . $stmt->error);
+                    }
+                }
+
+                $stmt->close();
+
+                $conn->commit();
+
+                echo json_encode([
+                    'status' => 'success',
+                    'message' => 'Promotion added successfully',
+                    'id' => $promotion_id
+                ]);
+            } catch (Exception $e) {
+                $conn->rollback();
+                throw $e;
+            }
+            
+            break;
 
         case 'PUT':
             if (!isset($_GET['id'])) {
@@ -191,6 +167,7 @@ try {
             $discount_percentage = (float)$request->discount_percentage;
             $start_date = mysqli_real_escape_string($conn, $request->start_date);
             $end_date = mysqli_real_escape_string($conn, $request->end_date);
+            $image_url = mysqli_real_escape_string($conn, $request->image_url);
 
             $conn->begin_transaction();
 
@@ -199,7 +176,8 @@ try {
                     description = ?, 
                     discount_percentage = ?, 
                     start_date = ?, 
-                    end_date = ? 
+                    end_date = ?,
+                    image_url = ?
                     WHERE promotion_id = ?";
             
             $stmt = $conn->prepare($sql);
@@ -207,7 +185,7 @@ try {
                 throw new Exception("Prepare failed: " . $conn->error);
             }
 
-            $stmt->bind_param("ssdssi", $name, $description, $discount_percentage, $start_date, $end_date, $id);
+            $stmt->bind_param("ssdsssi", $name, $description, $discount_percentage, $start_date, $end_date, $image_url, $id);
             
             if (!$stmt->execute()) {
                 throw new Exception("Execute failed: " . $stmt->error);
@@ -319,4 +297,3 @@ try {
         $conn->close();
     }
 }
-?>

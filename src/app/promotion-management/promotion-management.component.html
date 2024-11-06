@@ -39,6 +39,12 @@
           <ion-label position="stacked">Description</ion-label>
           <ion-textarea formControlName="description" rows="3"></ion-textarea>
         </ion-item>
+
+        <ion-item>
+          <ion-label position="stacked">Promotion Image</ion-label>
+          <input type="file" (change)="onFileSelected($event)" accept="image/*">
+          <ion-note *ngIf="selectedFile">Selected file: {{selectedFile.name}}</ion-note>
+        </ion-item>
       </ion-list>
       
       <ion-button expand="block" type="submit" [disabled]="!promotionForm.valid">

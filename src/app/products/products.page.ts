@@ -144,6 +144,18 @@ export class ProductsPage implements OnInit {
     });
   }
 
+  fetchPromotions() {
+    this.http.get<Promotion[]>('http://localhost/user_api/promotions.php')
+      .subscribe(
+        (response) => {
+          this.promotions = response;
+        },
+        (error) => {
+          console.error('Error fetching promotions:', error);
+        }
+      );
+  }
+
   applyPromotions() {
     this.products.forEach(product => {
       const promotion = this.promotions.find(p => p.product_ids.includes(product.product_id));

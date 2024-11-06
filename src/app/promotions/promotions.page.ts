@@ -15,6 +15,7 @@ interface Promotion {
   end_date: string; 
   product_ids: number[];
   product_names: string[];
+  image_url: string;
 }
 
 interface Product {
